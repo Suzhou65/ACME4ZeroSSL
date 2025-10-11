@@ -1,0 +1,31 @@
+{
+   "Telegram_BOTs":{
+      "TelegramToken": "",
+      "TelegramChatID": ""
+   },
+   "CloudflareAPI":{
+      "AuthToken": "",
+      "AuthMail": ""
+   },
+  "CloudflareZone":{
+      "ZoneID": ""
+   },
+  "CloudflareCNAME":{
+      "CNAMERecordsID": ["",""]
+   },
+   "ZeroSSLAPI":{
+      "AccessKey": "",
+      "VerifyCachePath": ""
+   },
+   "ZeroSSLDomains":{
+      "Domains": ["www.example.com","example.com"]
+   },
+   "Certificate":{
+      "CertificateSigningRequestConfigPath": "",
+      "CertificateSigningRequestPath": "",
+      "PendingPrivateKeyPath": "",
+      "PrivateKeyPenPath": "",
+      "CertificatePath": "",
+      "CertificateAuthorityBundlePath": ""
+   }
+}
