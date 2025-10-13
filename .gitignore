@@ -19,7 +19,7 @@ profile_default/
 ipython_config.py
 
 # Testing
-acme4zerossl_script.py
+acme4zerossl.error.log
 
 # macOS
 .DS_Store

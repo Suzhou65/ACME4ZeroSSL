@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
 import logging
-import datetime
 import json
 import requests
 import subprocess
-import time
+from time import sleep
 
 # For error handling, logfile config
 FORMAT = "%(asctime)s |%(levelname)s |%(message)s"
@@ -13,12 +12,6 @@ logging.basicConfig(level = logging.WARNING,
                     filename = "acme4zerossl.error.log",
                     filemode = "a", format = FORMAT)
 # TestPass_25J08
-
-# Generate timestamp
-def GetTime():
-    CurrentTime = datetime.datetime.now()
-    return CurrentTime.strftime("%Y-%m-%d %H:%M:%S")
-# TestPass_25J10
 
 # Configuration function
 def Configuration(ConfigPath = ()):
@@ -32,7 +25,7 @@ def Configuration(ConfigPath = ()):
         # If configuration file not found
     except FileNotFoundError:
         logging.exception(f"No such configuration file or directory: {ConfigPath}")
-        return False
+        return None
 # TestPass_25J08
 
 # Sending telegram message via bots
@@ -76,7 +69,7 @@ def CloudflareApiRequestHeader(ConfigPath = ()):
     CloudflareAptAuth = ConfigurationDict["CloudflareAPI"]["AuthToken"]
     CloudflareAuthMail = ConfigurationDict["CloudflareAPI"]["AuthMail"]
     # Using API Token as default
-    return {"Authorization":f"Bearer {CloudflareAptAuth}", "X-Auth-Email":CloudflareAuthMail, "Content-Type":"application/json"}
+    return {"Authorization": f"Bearer {CloudflareAptAuth}", "X-Auth-Email": CloudflareAuthMail, "Content-Type": "application/json"}
 # TestPass_25J08
 
 # Verify CloudFlare API
@@ -87,7 +80,7 @@ def VerifyCloudflareApi(ConfigPath = (), CloudflareApiResponAll = (None)):
     CloudflareTokenVerifyHeader = CloudflareApiRequestHeader(ConfigPath)
     # Send verify request
     try:
-        CloudflareVerifyRespon = requests.get(CloudflareVerifyRequest, headers=CloudflareTokenVerifyHeader, timeout=5)
+        CloudflareVerifyRespon = requests.get(CloudflareVerifyRequest, headers = CloudflareTokenVerifyHeader, timeout = 5)
         # Success, only retrun verify status
         if CloudflareVerifyRespon.status_code == 200 and CloudflareApiResponAll is None:
             CloudflareVerifyResponDict = json.loads(CloudflareVerifyRespon.text)
@@ -170,13 +163,16 @@ def CloudflareUpdateSpecifyCname(ConfigPath = (), UpdateDnsRecordCname =()):
     # HTTP PUT
     try:
         CnameUpdateRequest = requests.put(CloudflareCnameUpdate, headers = CnameUpdateVerifyHeader, data = UpdateCnameJson, timeout = 5)
-        CnameUpdateRespon = json.loads(CnameUpdateRequest.text)
-        CnameUpdateRequest.close()
-        return CnameUpdateRespon
+        if CnameUpdateRequest.status_code == 200:
+            CnameUpdateRespon = json.loads(CnameUpdateRequest.text)
+            CnameUpdateRequest.close()
+            return CnameUpdateRespon
+        else:
+            return CnameUpdateRequest.status_code
     except Exception as ErrorStatus:
         logging.exception(ErrorStatus)
         return False
-# TestPass_25J12
+# TestPass_25J13
 
 # Create certificates signing request
 def CreateCertSigningRequest(ConfigPath = ()):
@@ -242,20 +238,21 @@ commonName = {DomainList[0]}
     # Pending active private key
     PendingKey = ConfigurationDict["Certificate"]["PendingPrivateKeyPath"]
     # Openssl command
-    Opensslcommand = ["openssl", "req", "-new",
+    OpensslCommand = ["openssl", "req", "-new",
                       "-keyout", f"{PendingKey}",
                       "-out", f"{CertificateSigningRequest}",
                       "-config", f"{CsrConfigPath}"]
     # Using OpenSSL generate CSR and PK
     try:
-        subprocess.Popen(Opensslcommand, stdout=subprocess.PIPE)
-        time.sleep(5)
+        subprocess.Popen(OpensslCommand, stdout = subprocess.PIPE)
+        sleep(5)
         return CertificateSigningRequest
     except Exception as ErrorStatus:
         logging.exception(ErrorStatus)
         return False
 # TestPass_25J11
 
+# Sending certificate create request
 def ZeroSSLCreateCertificate(ConfigPath = ()):
     # Read configuration
     ConfigurationDict = Configuration(ConfigPath)
@@ -281,7 +278,7 @@ def ZeroSSLCreateCertificate(ConfigPath = ()):
             "certificate_csr": CertificateSigningRequestPayload}
     CreateCertificateJson = json.dumps(CreateCertificatePayload)
     # Header disclose JSON
-    CreateCertificateHeader = {"Content-Type":"application/json"}
+    CreateCertificateHeader = {"Content-Type": "application/json"}
     # Create certificat URL
     CreateCertificateUrl = (f"https://api.zerossl.com/certificates?access_key={ZeroSSLApiAuth}")
     try:
@@ -290,25 +287,113 @@ def ZeroSSLCreateCertificate(ConfigPath = ()):
         # Trun JSON into dict
         CreateCertificateResult = json.loads(CreateCertificateRequest.text)
         CreateCertificateRequest.close()
-        if len(DomainList) == 2:
+        # Svae validation cache
+        CertificateCacheFile = ConfigurationDict["ZeroSSLAPI"]["VerifyCachePath"]
+        with open(CertificateCacheFile,"w+") as CertificateValidationCache:
+                json.dump(CreateCertificateResult, CertificateValidationCache, indent = 4)
+                CertificateValidationCache.close()
+        if len(CreateCertificateResult["additional_domains"]) == 0:
             CertificateValidation = {
-                "Certificate": CreateCertificateResult["id"],
-                "Cname_1": CreateCertificateResult["validation"]["other_methods"][f"{DomainList[0]}"]["cname_validation_p1"],
-                "Content_1": CreateCertificateResult["validation"]["other_methods"][f"{DomainList[0]}"]["cname_validation_p2"],
-                "Cname_2": CreateCertificateResult["validation"]["other_methods"][f"{DomainList[1]}"]["cname_validation_p1"],
-                "Content_2": CreateCertificateResult["validation"]["other_methods"][f"{DomainList[1]}"]["cname_validation_p2"]}
+                "id": CreateCertificateResult["id"],
+                "Cname1": [
+                    CreateCertificateResult["validation"]["other_methods"][f"{DomainList[0]}"]["cname_validation_p1"],
+                    CreateCertificateResult["validation"]["other_methods"][f"{DomainList[0]}"]["cname_validation_p2"]]}
         else:
             CertificateValidation = {
                 "Certificate": CreateCertificateResult["id"],
-                "Cname_1": CreateCertificateResult["validation"]["other_methods"][f"{DomainList[0]}"]["cname_validation_p1"],
-                "Content_1": CreateCertificateResult["validation"]["other_methods"][f"{DomainList[0]}"]["cname_validation_p2"]}
-        # Svae validation cache
-        CertificateCacheFile = ["AccessKey"]["VerifyCachePath"]
-        with open(CertificateCacheFile,"w") as CertificateValidationCache:
-                json.dump(CertificateValidation, CertificateValidationCache, indent = 3)
-                CertificateValidationCache.close()
-                return CertificateValidation
+                "Cname1": [
+                    CreateCertificateResult["validation"]["other_methods"][f"{DomainList[0]}"]["cname_validation_p1"],
+                    CreateCertificateResult["validation"]["other_methods"][f"{DomainList[0]}"]["cname_validation_p2"]],
+                "Cname2": [
+                    CreateCertificateResult["validation"]["other_methods"][f"{DomainList[1]}"]["cname_validation_p1"],
+                    CreateCertificateResult["validation"]["other_methods"][f"{DomainList[1]}"]["cname_validation_p2"]]}
+        return CertificateValidation
+    except Exception as ErrorStatus:
+        logging.exception(ErrorStatus)
+        return False
+# TestPass_25J13, Single domain only
+
+# Verification, when using CNAME and HTTP/HTTPS file verify
+def ZeroSSLVerification(ConfigPath = (), ValidationMethod = (), CertificateValidation = ()):
+    # Read configuration
+    ConfigurationDict = Configuration(ConfigPath)
+    ZeroSSLApiAuth = ConfigurationDict["ZeroSSLAPI"]["AccessKey"]
+    # Certificates id
+    CertificatesID = CertificateValidation["id"]
+    # Verification method, choice CNAME
+    VerificationMethod = {"validation_method": ValidationMethod}
+    # Verification URL
+    CertificateVerificationUrl = (f"https://api.zerossl.com/certificates/{CertificatesID}/challenges?access_key={ZeroSSLApiAuth}")
+    try:
+        # Sending verification request
+        VerificationRequest = requests.post(CertificateVerificationUrl, data = VerificationMethod, timeout = 5)
+        # Trun JSON into dict
+        VerificationResult = json.loads(VerificationRequest.text)
+        VerificationRequest.close()
+        return VerificationResult
     except Exception as ErrorStatus:
         logging.exception(ErrorStatus)
         return False
 # TestPass_25J13
+
+# Download certificate from ZeroSSL
+def ZeroSSLDownloadCertificate(ConfigPath = (), CertificateValidation = ()):
+    # Read configuration
+    ConfigurationDict = Configuration(ConfigPath)
+    ZeroSSLApiAuth = ConfigurationDict["ZeroSSLAPI"]["AccessKey"]
+    # Certificates id
+    CertificatesID = CertificateValidation["id"]
+    # Header disclose JSON
+    CertificateDownloadHeader = {"Content-Type": "application/json"}
+    CertificateDownloadUrl = (f"https://api.zerossl.com/certificates/{CertificatesID}/download/return?access_key={ZeroSSLApiAuth}")
+    try:
+        # Sending download request
+        CertificateDownloadRespon = requests.get(CertificateDownloadUrl, headers = CertificateDownloadHeader, timeout = 5)
+        # Trun JSON into dict
+        CertificateDownloadResult = json.loads(CertificateDownloadRespon.text)
+        CertificateDownloadRespon.close()
+        if "certificate.crt" in CertificateDownloadResult:
+            return CertificateDownloadResult
+        else:
+            ErrorStatus = CertificateDownloadResult["error"]["type"]
+            logging.exception(ErrorStatus)
+            return False
+    except Exception as ErrorStatus:
+        logging.exception(ErrorStatus)
+        return False
+# UNTESTED
+
+# Install certificate to server folder
+def CertificateInstallation(ConfigPath = (), CertificatePayload = (), ServerReloadCommand = ()):
+    # Read configuration, get file path
+    ConfigurationDict = Configuration(ConfigPath)
+    PrivateKeyCache = ConfigurationDict["Certificate"]["PendingPrivateKeyPath"]
+    PrivateKey = ConfigurationDict["Certificate"]["PrivateKeyPenPath"]
+    Certificate = ConfigurationDict["Certificate"]["CertificatePath"]
+    CertificateBA = ConfigurationDict["Certificate"]["CertificateAuthorityBundlePath"]
+    try:
+        # Save private key
+        with open(PrivateKeyCache, "r") as PendingPrivateKey:
+            with open(PrivateKey, "w+") as ActivePrivateKey:
+                for PrivateKeyLine in PendingPrivateKey:
+                    ActivePrivateKey.write(PrivateKeyLine)
+                ActivePrivateKey.close()
+            PendingPrivateKey.close()
+        # Save certificate
+        CertificateContent = CertificatePayload["certificate.crt"]
+        with open(Certificate, "w+") as ActiveCertificate:
+            ActiveCertificate.write(CertificateContent)
+            ActiveCertificate.close()
+        # Save certificate authority bundle
+        CertificateAuthorityBundleContent = CertificatePayload["ca_bundle.crt"]
+        with open(CertificateBA, "w+") as ActiveCertificateBA:
+            ActiveCertificateBA.write(CertificateAuthorityBundleContent)
+            ActiveCertificateBA.close()
+            sleep(5)
+            # Reload server
+            subprocess.Popen(ServerReloadCommand, stdout = subprocess.PIPE)
+        return 200
+    except Exception as ErrorStatus:
+        logging.exception(ErrorStatus)
+        return False
+# UNTESTED
