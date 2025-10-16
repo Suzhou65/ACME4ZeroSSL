@@ -1,7 +1,4 @@
 # -*- coding: utf-8 -*-
-import acme4zerossl
-from sys import exit
-from time import sleep
-
-# !!!!! WARNING !!!!! UNTESTED SCRIPT
-
+#import acme4zerossl
+#from sys import exit
+#from time import sleep
