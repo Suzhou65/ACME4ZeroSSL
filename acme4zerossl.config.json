@@ -7,11 +7,9 @@
       "Token": "",
       "Mail": ""
    },
-  "CloudflareZone":{
-      "ZoneID": ""
-   },
-  "CloudflareCNAME":{
-      "CNAMERecordsID": ["",""]
+  "CloudflareRecords":{
+      "ZoneID": "",
+      "CNAMERecordsID": ["", ""]
    },
    "ZeroSSLAPI":{
       "AccessKey": "",
@@ -19,6 +17,11 @@
    },
    "Certificate":{
       "Domains": ["www.example.com", "example.com"],
+      "Counrty": "",
+      "StateOrProvince": "",
+      "Locality": "",
+      "Organization": "",
+      "OrganizationalUnit": "",
       "Config": "",
       "CSR": "",
       "PendingPK": "",

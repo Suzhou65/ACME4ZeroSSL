@@ -1,14 +1,16 @@
 # Acme4ZeroSSL
 [![Python](https://github.takahashi65.info/lib_badge/python.svg)](https://www.python.org/)
-[![under_development](https://github.takahashi65.info/lib_badge/under_development.svg)](https://github.com/Suzhou65/acme4zerossl)
+[![Version](https://github.takahashi65.info/lib_badge/python-3.12.svg)](https://www.python.org/)
+[![active_maintenance](https://github.takahashi65.info/lib_badge/active_maintenance.svg)](https://github.com/Suzhou65/acme4zerossl)
 [![Size](https://img.shields.io/github/repo-size/Suzhou65/acme4zerossl.svg)](https://shields.io/category/size)
 
-Python script to issue and renew TLS certs from ZeroSSL.
+Python script for renew certificate from ZeroSSL.
 
 ## Contents
 - [Acme4ZeroSSL](#acme4zerossl)
   * [Contents](#contents)
   * [Development Purpose](#development-purpose)
+  * [Limitation](#limitation)
   * [Usage](#usage)
     + [Configuration file](#configuration-file)
     + [Cloudflare API](#Cloudflare-api)
@@ -16,21 +18,27 @@ Python script to issue and renew TLS certs from ZeroSSL.
     + [Telegram BOTs](#telegram-bots)
   * [Import module](#import-module)
   * [Script](#script)
-    + [Verify Cloudflare Token](verify-cloudflare-token)
-    + [Find CNAME Records ID](find-cname-records-id)
-    + [Verify via CNAME](verify-via-cname)
-    + [Cancel Certificate](cancel-certificate)
-    + [Revoke Certificate](revoke-certificate)
+    + [Verify Cloudflare Token](#verify-cloudflare-token)
+    + [Find CNAME Records ID](#find-cname-records-id)
+    + [Verify via CNAME](#verify-via-cname)
+    + [Cancel Certificate](#cancel-certificate)
+    + [Revoke Certificate](#revoke-certificate)
   * [Dependencies](#dependencies)
   * [License](#license)
   * [Resources](#resources)
 
 ## Development Purpose
-I manage sh*tload of servers, including profile page, HomeKit gateway, several Hentai@Home distributed file systems. Also, some headless system based on Apache Tomcat, which don't support authentication via HTTP/HTTPS challenge file.
+I manage sh*tload of servers, including my profile page, apartment's HomeKit gateway, several Hentai@Home client. Also, some headless system based on Apache Tomcat, which don't support authentication via HTTP/HTTPS challenge file.
 
 Even though I can update CNAME record through Cloudflare API, certificate downloading and install has to be done manually. Current certificate validity is 90 days, but as that period gets shorter, those process becomes more annoying and frequent.
 
-Developed to automate renewal certificate with ZeroSSL REST API.
+Developed to automate renewal certificate with ZeroSSL REST API, pair with Cloudflare hosting DNS records for CNAME challenge.
+
+## Limitation
+```diff
+- Single Common Name (CN), or single CN & single Subject Alternative Name (SAN) pairs.
+- Currently support CNAME challenge only, HTTP/HTTPS challenge file support TBD. 
+```
 ## Usage
 ### Configuration file
 Using JSON format file storage configuration.
@@ -44,24 +52,27 @@ Using JSON format file storage configuration.
       "Token": "",
       "Mail": ""
    },
-  "CloudflareZone":{
-      "ZoneID": ""
-   },
-  "CloudflareCNAME":{
-      "CNAMERecordsID": [""]
+  "CloudflareRecords":{
+      "ZoneID": "",
+      "CNAMERecordsID": ["", ""]
    },
    "ZeroSSLAPI":{
       "AccessKey": "",
-      "Cache": ""
+      "Cache": "/Documents/script/cache.json"
    },
    "Certificate":{
-      "Domains": ["www.example.com","example.com"],
-      "Config": "",
-      "CSR": "",
-      "PendingPK": "",
-      "PK": "",
-      "CA": "",
-      "CAB": ""
+      "Domains": ["www.example.com", "example.com"],
+      "Counrty": "",
+      "StateOrProvince": "",
+      "Locality": "",
+      "Organization": "",
+      "OrganizationalUnit": "",
+      "Config": "/Documents/script/csr.conf",
+      "CSR": "/Documents/script/certificate.csr",
+      "PendingPK": "/Documents/script/cache.key",
+      "PK": "/var/certificate/private.key",
+      "CA": "/var/certificate/certificate.crt",
+      "CAB": "/var/certificate/ca_bundle.crt"
    }
 }
 ```
@@ -69,15 +80,13 @@ Configuration file must include following parameters:
 
 + ```Telegram BOT``` token and chat ID for status notifications.
 + ```ZeroSSL API Key```
-+ ```Cloudflare API configuration``` include API Key, Account email, Zone ID and Specific DNS records.
++ ```Cloudflare configuration``` include API Key, auth email, Zone ID and Specific DNS records.
 + ```Domains``` list that require certificate renewal.
-+ ```File paths``` include Certificate Signing Request sign config, CSR, pending / effective Private Key and Certificates.
++ ```Certificate``` include CSR signing configure, CSR, Pending/Active Private key and Certificates path.
 
-For using configuration file, please modify filepath inside script.
-```python
-ConfigFilePath = "/Users/Documents/script_acme4zerossl/acme4zerossl.config.json"
+```diff
+- CNAMERecordsID & Domains list object are structured to match ZeroSSL REST API response structure. Even when single Common Name, leave empty ("") string as placeholder maintain compatibility.
 ```
-Improper configuration may result in partial or complete system failure. Make sure all required parameters are defined in the configuration file.
 
 ### Cloudflare API
 For using CNAME challenge function, you need to domain registered with Cloudflare, or choice Cloudflare as DNS hosting service.
@@ -107,23 +116,107 @@ from acme4zerossl import CreateCSR
 ```
 
 ## Script
-
 ### Verify Cloudflare Token
+```python
+from acme4zerossl import VerifyCFToken
+ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
+# Output result's value as string only, not fully result.
+VerifyCFToken(ConfigFilePath)
+```
+The demonstration script is named ```script_verify.py```
 ### Find CNAME Records ID
-### Verify via CNAME
+```python
+from acme4zerossl import GetCFRecords
+ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
+FileOutput = None
+# Output result's value as dictionary object.
+# Adding File Output for output JSON file.
+GetCFRecords(ConfigFilePath, FileOutput)
+```
+Output is dictionary object contain fully cloudflare dns records belong specify Zone id.
+
+### Verify via CNAME challenge
+```diff
++ Support webpage server reload or restart (optional).
++ acme.CertificateInstall(CertificateContent, CertificateContent, ServerReloadCommand)
+```
+```python
+import acme4zerossl as acme
+ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
+ServerCommand = None
+# ["sudo", "service", "apache2", "reload"]
+# ServerCommand must be list object.
+
+# Create certificates signing request
+acme.CreateCSR(ConfigFilePath)
+# Sending certificate create request to ZeroSSl
+VerifyRequest = acme.ZeroSSLCreateCA(ConfigFilePath)
+# Phrasing ZeroSSL verify, select CNAME challenge
+VerifyData = acme.ZeroSSLVerifyData(VerifyRequest)
+# Update CNAME via Cloudflare API
+if ("additional_domains_cname") not in VerifyData:
+   UpdatePayloads = [
+      VerifyData['common_name_cname']]
+   acme.UpdateCFCNAME(ConfigFilePath, UpdatePayload)
+elif ("additional_domains_cname") in VerifyData:
+   UpdatePayloads = [
+      VerifyData['common_name_cname'],
+      VerifyData['additional_domains_cname']]
+for UpdatePayload in UpdatePayloads:
+   acme.UpdateCFCNAME(ConfigFilePath, UpdatePayload)
+# Verify CNAME challenge
+CertificateID = VerifyData['id']
+acme.ZeroSSLVerification(ConfigFilePath, CertificateID)
+# Download certificates
+CertificateContent = acme.ZeroSSLDownloadCA(ConfigFilePath, CertificateID)
+# Install certificates
+acme.CertificateInstall(ConfigFilePath, CertificateContent, ServerCommand)
+```
+Demonstration script named ```script_cname.py```, which including Telegram BOTs notify function.
 ### Cancel Certificate
+``` diff
+- Please note that only certificates with status draft or pending_validation can be cancelled.
+- After verification, the certificates cannot been cancelled.
+```
+```python
+from acme4zerossl import ZeroSSLCancelCA
+ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
+
+# Input certificate hash manually
+CertificateID = input("Please input certificate ID (hash): ")
+ZeroSSLCancelCA(ConfigFilePath, CertificateID)
+```
+Demonstration script named ```script_cancel.py```
 ### Revoke Certificate
+``` diff
+- ZeroSSL REST API require reason for certificate revoke (Optional).
+- Only certificates with status issued can be revoked.
+- If a certificate has already been successfully revoked you will get a success response nevertheless.
+```
+```python
+from acme4zerossl import ZeroSSLRevokeCA
+ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
+# ZeroSSL REST API need reason for certificate revoke
+# Optional RevokeReason string: keyCompromise, affiliationChanged, Superseded, cessationOfOperation
+# Default is "Unspecified" as None.
+RevokeReason = None
+# Input certificate hash manually
+CertificateID = input("Please input certificate ID (hash): ")
+ZeroSSLRevokeCA(ConfigFilePath, CertificateID, RevokeReason)
+```
+Demonstration script named ```script_revoke.py```
 
 ## Dependencies
 ### Python version
-* Python 3.7.3 or above
-* Testing on the above Python version: 3.12.2
+* Testing passed on above Python version: ```3.11.2```, ```3.12.2```.
+* Version ```3.9.2``` and ```3.9.6``` workable.
 ### Python module
 * logging
 * json
 * requests
 * subprocess
 * time
+* pathlib
 * sys
 
 ## License
@@ -131,6 +224,6 @@ General Public License -3.0
 
 ## Resources
 ### ZeroSSL API
-- [ZeroSSL REST APIdocumentation](https://zerossl.com/documentation/api/)
+- [ZeroSSL REST APIdocumentation](https://zerossl.com/documentation/api/) the official documentation.
 ### Reference repository
-- [ZeroSSL-CertRenew](https://github.com/ajnik/ZeroSSL-CertRenew/tree/master)
+- [ZeroSSL-CertRenew](https://github.com/ajnik/ZeroSSL-CertRenew/tree/master) for HTTP/HTTPS challenge file.
