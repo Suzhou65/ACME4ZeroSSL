@@ -28,5 +28,8 @@
       "PK": "",
       "CA": "",
       "CAB": ""
+   },
+   "FileChallenge":{
+      "HTMLFilePath": ""
    }
 }

@@ -1,7 +1,7 @@
 # Acme4ZeroSSL
 [![Python](https://github.takahashi65.info/lib_badge/python.svg)](https://www.python.org/)
 [![Version](https://github.takahashi65.info/lib_badge/python-3.12.svg)](https://www.python.org/)
-[![active_maintenance](https://github.takahashi65.info/lib_badge/active_maintenance.svg)](https://github.com/Suzhou65/acme4zerossl)
+[![under_development](https://github.takahashi65.info/lib_badge/under_development.svg)](https://github.com/Suzhou65/acme4zerossl)
 [![Size](https://img.shields.io/github/repo-size/Suzhou65/acme4zerossl.svg)](https://shields.io/category/size)
 
 Python script for renew certificate from ZeroSSL.
@@ -18,11 +18,12 @@ Python script for renew certificate from ZeroSSL.
     + [Telegram BOTs](#telegram-bots)
   * [Import module](#import-module)
   * [Script](#script)
-    + [Verify Cloudflare Token](#verify-cloudflare-token)
-    + [Find CNAME Records ID](#find-cname-records-id)
+    + [Verify Cloudflare token](#verify-cloudflare-token)
+    + [Find CNAME records ID](#find-cname-records-id)
     + [Verify via CNAME](#verify-via-cname)
-    + [Cancel Certificate](#cancel-certificate)
-    + [Revoke Certificate](#revoke-certificate)
+    + [Download certificate](#download-certificate)
+    + [Cancel certificate](#cancel-certificate)
+    + [Revoke certificate](#revoke-certificate)
   * [Dependencies](#dependencies)
   * [License](#license)
   * [Resources](#resources)
@@ -73,6 +74,9 @@ Using JSON format file storage configuration.
       "PK": "/var/certificate/private.key",
       "CA": "/var/certificate/certificate.crt",
       "CAB": "/var/certificate/ca_bundle.crt"
+   },
+   "FileChallenge":{
+      "HTMLFilePath": ""
    }
 }
 ```
@@ -83,6 +87,7 @@ Configuration file must include following parameters:
 + ```Cloudflare configuration``` include API Key, auth email, Zone ID and Specific DNS records.
 + ```Domains``` list that require certificate renewal.
 + ```Certificate``` include CSR signing configure, CSR, Pending/Active Private key and Certificates path.
++ ```FileChallenge``` files path for HTTP/HTTPS file challenge, usually your Apache/Nginx webpage folder.
 
 ```diff
 - CNAMERecordsID & Domains list object are structured to match ZeroSSL REST API response structure. Even when single Common Name, leave empty ("") string as placeholder maintain compatibility.
@@ -116,7 +121,7 @@ from acme4zerossl import CreateCSR
 ```
 
 ## Script
-### Verify Cloudflare Token
+### Verify Cloudflare token
 ```python
 from acme4zerossl import VerifyCFToken
 ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
@@ -124,7 +129,7 @@ ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
 VerifyCFToken(ConfigFilePath)
 ```
 The demonstration script is named ```script_verify.py```
-### Find CNAME Records ID
+### Find CNAME records ID
 ```python
 from acme4zerossl import GetCFRecords
 ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
@@ -172,8 +177,13 @@ CertificateContent = acme.ZeroSSLDownloadCA(ConfigFilePath, CertificateID)
 # Install certificates
 acme.CertificateInstall(ConfigFilePath, CertificateContent, ServerCommand)
 ```
-Demonstration script named ```script_cname.py```, which including Telegram BOTs notify function.
-### Cancel Certificate
+Demonstration script named ```script_cname.py```, which including Telegram BOTs notify and check validity date of certificate.
+### Download certificate
+
+```python
+
+```
+### Cancel certificate
 ``` diff
 - Please note that only certificates with status draft or pending_validation can be cancelled.
 - After verification, the certificates cannot been cancelled.
@@ -187,7 +197,7 @@ CertificateID = input("Please input certificate ID (hash): ")
 ZeroSSLCancelCA(ConfigFilePath, CertificateID)
 ```
 Demonstration script named ```script_cancel.py```
-### Revoke Certificate
+### Revoke certificate
 ``` diff
 - ZeroSSL REST API require reason for certificate revoke (Optional).
 - Only certificates with status issued can be revoked.

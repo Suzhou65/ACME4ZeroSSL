@@ -5,36 +5,33 @@ from sys import exit
 
 # Config
 ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
-# Apache2       ['systemctl', 'reload', 'apache2']
-# Nginx         ['service', 'nginx', 'restart']
+#       Apache2 ['systemctl', 'reload', 'apache2']
 ServerCommand = None
-
 # Script
-def AcmeScript(ConfigFilePath, ServerCommand):
+def main():
+    Rt = acme.Runtime(ConfigFilePath)
+    Tg = acme.Telegram(ConfigFilePath)
+    Cf = acme.Cloudflare(ConfigFilePath)
+    Zs = acme.ZeroSSL(ConfigFilePath)
     # Create certificates signing request
-    ResultCreateCSR = acme.CreateCSR(ConfigFilePath)
+    ResultCreateCSR = Rt.CreateCSR()
     if type(ResultCreateCSR) is bool:
-        TelegramMessage = ("Error occurred during Create CSR and Private key.")
-        acme.Telegram2Me(ConfigFilePath, TelegramMessage)
-        raise Exception(TelegramMessage)
+        Tg.Message2Me("Error occurred during Create CSR and Private key.")
+        raise Exception()
     elif type(ResultCreateCSR) is int:
-        MessageText = ("Successful create CSR and Private key.")
-        acme.RuntimeMessage(MessageText)
+        Rt.Message("Successful create CSR and Private key.")
     # Sending CSR
-    VerifyRequest = acme.ZeroSSLCreateCA(ConfigFilePath)
+    VerifyRequest = Zs.ZeroSSLCreateCA()
     if type(VerifyRequest) is int:
-        TelegramMessage = (f"Unable connect ZeroSSL API, HTTP Error: {VerifyRequest}.")
-        acme.Telegram2Me(ConfigFilePath,TelegramMessage)
-        raise Exception(TelegramMessage)
+        Tg.Message2Me(f"Unable connect ZeroSSL API, HTTP Error: {VerifyRequest}.")
+        raise Exception()
     elif type(VerifyRequest) is bool:
-        TelegramMessage = ("Error occurred during request new certificate.")
-        acme.Telegram2Me(ConfigFilePath,TelegramMessage)
-        raise Exception(TelegramMessage)
+        Tg.Message2Me("Error occurred during request new certificate.")
+        raise Exception()
     # Phrasing ZeroSSL verify
     elif type(VerifyRequest) is dict:
-        VerifyData = acme.ZeroSSLVerifyData(ConfigFilePath, VerifyRequest, Mode="CNAME")
-        MessageText = (f"ZeroSSL API request successful, certificate hash: {VerifyData['id']}")
-        acme.RuntimeMessage(MessageText)
+        VerifyData = Zs.ZeroSSLVerifyData(VerifyRequest, Mode="CNAME")
+        Rt.Message(f"ZeroSSL API request successful, certificate hash: {VerifyData['id']}")
     # Update CNAME via Cloudflare API
     if ("additional_domains_cname") not in VerifyData:
         UpdatePayloads = [VerifyData['common_name_cname']]
@@ -42,74 +39,67 @@ def AcmeScript(ConfigFilePath, ServerCommand):
         UpdatePayloads = [VerifyData['common_name_cname'],
                           VerifyData['additional_domains_cname']]
     for UpdatePayload in UpdatePayloads:
-        ResultUpdateCFCNAME = acme.UpdateCFCNAME(ConfigFilePath, UpdatePayload)
+        ResultUpdateCFCNAME = Cf.UpdateCFCNAME(UpdatePayload)
         if type(ResultUpdateCFCNAME) is dict and ResultUpdateCFCNAME['success'] == True:
-            MessageText = ("Successful update CNAME record from Cloudflare.")
-            acme.RuntimeMessage(MessageText)
+            Rt.Message("Successful update CNAME record from Cloudflare.")
             sleep(5)
+        elif type(ResultUpdateCFCNAME) is dict and ResultUpdateCFCNAME['success'] == False:
+            Tg.Message2Me(f"Cloudflare Update Failed, {ResultUpdateCFCNAME['errors']}")
+            raise Exception()
+        elif type(ResultUpdateCFCNAME) is int:
+            Tg.Message2Me(f"Unable connect Cloudflare API, HTTP Error: {ResultUpdateCFCNAME}")
+            raise Exception()
         else:
-            TelegramMessage = (f"Cloudflare Update Failed, {ResultUpdateCFCNAME['errors']}")
-            acme.Telegram2Me(ConfigFilePath,TelegramMessage)
-            raise Exception (ResultUpdateCFCNAME['errors'])
+            raise Exception()
     # Wait DNS records update and active
     sleep(30)
     # Verify CNAME challenge
     CertificateID = VerifyData['id']
-    VerifyResult = acme.ZeroSSLVerification(ConfigFilePath, CertificateID)
+    VerifyResult = Zs.ZeroSSLVerification(CertificateID)
     if type(VerifyResult) is bool:
-        TelegramMessage = ("Error occurred during CNAME verification.")
-        acme.Telegram2Me(ConfigFilePath, TelegramMessage)
-        raise Exception(TelegramMessage)
+        Tg.Message2Me("Error occurred during CNAME verification.")
+        raise Exception()
     elif type(VerifyResult) is dict and ("error") in VerifyResult:
-        acme.Telegram2Me(ConfigFilePath, TelegramMessage = VerifyResult['error']['type'])
+        Tg.Message2Me(f"{VerifyResult['error']['type']}")
         raise Exception (VerifyResult['error']['type'])
     # Verify successful, wait issued
     elif type(VerifyResult) is dict and VerifyResult['status'] == ("pending_validation"):
-        MessageText = ("CNAME verify successful, wait certificate issued.")
-        acme.RuntimeMessage(MessageText)
+        Rt.Message("CNAME verify successful, wait certificate issued.")
         sleep(30)
     # Verify successful and been issued
     elif type(VerifyResult) is dict and VerifyResult['status'] == ("issued"):
-        MessageText = ("CNAME verify successful, certificate been issued.")
-        acme.RuntimeMessage(MessageText)
+        Rt.Message("CNAME verify successful, certificate been issued.")
         sleep(5)
     # Download certificates
-    CertificateContent = acme.ZeroSSLDownloadCA(ConfigFilePath, CertificateID)
+    CertificateContent = Zs.ZeroSSLDownloadCA(CertificateID)
     if type(CertificateContent) is bool:
-        TelegramMessage = ("Error occurred during certificates download.")
-        acme.Telegram2Me(ConfigFilePath, TelegramMessage)
-        raise Exception(TelegramMessage)
+        Tg.Message2Me("Error occurred during certificates download.")
+        raise Exception()
     elif type(CertificateContent) is str:
-        TelegramMessage = (f"Error occurred during download certificate. {CertificateContent}")
-        acme.Telegram2Me(ConfigFilePath, TelegramMessage)
+        Tg.Message2Me(f"Error occurred during download certificate. {CertificateContent}")
         raise Exception(CertificateContent)
     elif type(CertificateContent) is dict and ("certificate.crt") in CertificateContent:
-        MessageText = ("Certificate has been downloaded.")
-        acme.RuntimeMessage(MessageText)
+        Rt.Message("Certificate has been downloaded.")
         sleep(5)
     # Install certificate to server folder
-    ResultCheck = acme.CertificateInstall(ConfigFilePath, CertificateContent, ServerCommand)
+    ResultCheck = Rt.CertificateInstall(CertificateContent, ServerCommand)
     if type(ResultCheck) is list or type(ResultCheck) is str:
-        TelegramMessage = (f"Certificate been renewed and installed,\nwill expires in {VerifyResult['expires']}.")
-        acme.Telegram2Me(ConfigFilePath, TelegramMessage)
+        Tg.Message2Me(f"Certificate been renewed and installed,\r\nwill expires in {VerifyResult['expires']}.")
     elif type(ResultCheck) is int:
-        TelegramMessage = (f"Certificate been renewed,\nwill expires in {VerifyResult['expires']}.\nYou may need to restart server manually.")
-        acme.Telegram2Me(ConfigFilePath, TelegramMessage)
+        Tg.Message2Me(f"Certificate been renewed,\r\nwill expires in {VerifyResult['expires']}.\r\nYou may need to restart server manually.")
     elif type(ResultCheck) is bool:
-        TelegramMessage = ("Error occurred during certificate install.\nYou may need to download and install manually.")
-        acme.Telegram2Me(ConfigFilePath, TelegramMessage)
-        raise Exception(CertificateContent)
-
+        Tg.Message2Me("Error occurred during certificate install.\r\nYou may need to download and install manually.")
+        raise Exception()
 # Runtime, including check validity date of certificate
-try:
-    CertificateMinimum = acme.ExpiresCheck(ConfigFilePath)
-    if type(CertificateMinimum) is int:
-        MessageText = (f"Certificate's validity date has {CertificateMinimum} days left.")
-        acme.RuntimeMessage(MessageText)
-    elif type(CertificateMinimum) is bool:
-        AcmeScript(ConfigFilePath, ServerCommand)
-    exit(0)
-except Exception:
-    exit(0)
-
-# UNTEST_25J27
+if __name__ == "__main__":
+    try:
+        Rt = acme.Runtime(ConfigFilePath)
+        # Minimum is 14 days
+        CertificateMinimum = Rt.ExpiresCheck()
+        if type(CertificateMinimum) is int:
+            Rt.Message(f"Certificate's validity date has {CertificateMinimum} days left.")
+        elif type(CertificateMinimum) is bool:
+            main()
+    except Exception:
+        exit(0)
+#
