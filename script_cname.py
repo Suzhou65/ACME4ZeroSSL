@@ -5,8 +5,10 @@ from sys import exit
 
 # Config
 ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
-#       Apache2 ['systemctl', 'reload', 'apache2']
-ServerCommand = None
+# Apache2       ['systemctl', 'reload', 'apache2']
+# Nginx         ['service', 'nginx', 'restart']
+ServerCommand  = None
+
 # Script
 def main():
     Rt = acme.Runtime(ConfigFilePath)
@@ -44,7 +46,7 @@ def main():
             Rt.Message("Successful update CNAME record from Cloudflare.")
             sleep(5)
         elif type(ResultUpdateCFCNAME) is dict and ResultUpdateCFCNAME['success'] == False:
-            Tg.Message2Me(f"Cloudflare Update Failed, {ResultUpdateCFCNAME['errors']}")
+            Tg.Message2Me(f"Cloudflare update Failed, {ResultUpdateCFCNAME['errors']}")
             raise Exception()
         elif type(ResultUpdateCFCNAME) is int:
             Tg.Message2Me(f"Unable connect Cloudflare API, HTTP Error: {ResultUpdateCFCNAME}")
@@ -56,7 +58,10 @@ def main():
     # Verify CNAME challenge
     CertificateID = VerifyData['id']
     VerifyResult = Zs.ZeroSSLVerification(CertificateID)
-    if type(VerifyResult) is bool:
+    if type(VerifyResult) is int:
+        Tg.Message2Me(f"Unable connect ZeroSSL API, HTTP Error: {VerifyResult}.")
+        raise Exception()
+    elif type(VerifyResult) is bool:
         Tg.Message2Me("Error occurred during CNAME verification.")
         raise Exception()
     elif type(VerifyResult) is dict and ("error") in VerifyResult:
@@ -84,11 +89,11 @@ def main():
     # Install certificate to server folder
     ResultCheck = Rt.CertificateInstall(CertificateContent, ServerCommand)
     if type(ResultCheck) is list or type(ResultCheck) is str:
-        Tg.Message2Me(f"Certificate been renewed and installed,\r\nwill expires in {VerifyResult['expires']}.")
+        Tg.Message2Me(f"Certificate been renewed and installed, will expires in {VerifyResult['expires']}.")
     elif type(ResultCheck) is int:
-        Tg.Message2Me(f"Certificate been renewed,\r\nwill expires in {VerifyResult['expires']}.\r\nYou may need to restart server manually.")
+        Tg.Message2Me(f"Certificate been renewed, will expires in {VerifyResult['expires']}. You may need to restart server manually.")
     elif type(ResultCheck) is bool:
-        Tg.Message2Me("Error occurred during certificate install.\r\nYou may need to download and install manually.")
+        Tg.Message2Me("Error occurred during certificate install. You may need to download and install manually.")
         raise Exception()
 # Runtime, including check validity date of certificate
 if __name__ == "__main__":
@@ -102,4 +107,4 @@ if __name__ == "__main__":
             main()
     except Exception:
         exit(0)
-#
+# TESTPASS 25K21

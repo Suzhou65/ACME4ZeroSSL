@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
+import logging
 from pathlib import Path
 import json
-import logging
+import datetime
+import textwrap
 import requests
 import subprocess
 from time import sleep
-import datetime
 
 # Error handling
 FORMAT = "%(asctime)s |%(levelname)s |%(message)s"
@@ -56,12 +57,18 @@ class Runtime():
         self.DomainList    = self.RuntimeConfig['Certificate']['Domains']
         self.CommonName    = self.DomainList[0]
         self.AltName       = self.DomainList[1] if len(self.DomainList) > 1 else ""
+        # Terminal text width
+        self.MessageWidth  = 100
     # Print runtime info
     def Message(self, MessageText):
         EventTime = datetime.datetime.now()
         TextPrintTime = EventTime.strftime("%H:%M:%S")
-        print(f"{TextPrintTime} | {MessageText}")
-    # TESTPASS 25K13
+        TextPrefix = (f"{TextPrintTime} | ")
+        UsableWidth = self.MessageWidth - len(TextPrefix)
+        SequentIndent = " " * len(TextPrefix)
+        Wrapping = textwrap.fill(MessageText, width=UsableWidth, subsequent_indent=SequentIndent)
+        print(TextPrefix + Wrapping)
+    # TESTPASS 25K21
 
     # Check certificate expires, default minimum is 14 days
     def ExpiresCheck(self, Minimum = (14)):
@@ -208,7 +215,7 @@ commonName = {self.CommonName}
         except Exception as InstallCAError:
             logging.exception(InstallCAError)
             return False
-    #
+    # TESTPASS 25K21
 
 # Sending Telegram message
 class Telegram():
@@ -272,7 +279,7 @@ class Cloudflare():
         except Exception as VerifyCFError:
             logging.exception(VerifyCFError)
             return False
-    # TESTPASS+25K14
+    # TESTPASS 25K20
 
     # Download all DNS records from Cloudflare
     def GetCFRecords(self, FileOutput = (None)):
@@ -299,7 +306,7 @@ class Cloudflare():
         except Exception as GetCFRecordsError:
             logging.exception(GetCFRecordsError)
             return False
-    # TESTPASS+25K14
+    # TESTPASS 25K20
 
     # Update CNAME records at Cloudflare
     def UpdateCFCNAME(self, UpdatePayload):
@@ -324,7 +331,7 @@ class Cloudflare():
         except Exception as UpdateCNAMEError:
             logging.exception(UpdateCNAMEError)
             return False
-    #
+    # TESTPASS 25K21
 
 # ZeroSSL REST API package
 class ZeroSSL():
@@ -378,7 +385,7 @@ class ZeroSSL():
         except Exception as ErrorStatus:
             logging.exception(ErrorStatus)
             return False
-    #
+    # TESTPASS 25K21
 
     # Phrasing ZeroSSL verify JSON, currently CNAME only.
     def ZeroSSLVerifyData(self, VerifyRequest, Mode = ('CNAME')):
@@ -404,9 +411,10 @@ class ZeroSSL():
                         VerifyRequest['validation']['other_methods'][self.AltName]['cname_validation_p1'],
                         VerifyRequest['validation']['other_methods'][self.AltName]['cname_validation_p2']]}
                 return CreateCAVerify
+            # CNAME PASS 25K21
         except:
             pass
-    #
+    # TESTPASS CNAME
 
     # Verification, when using CNAME and HTTP/HTTPS file verify
     def ZeroSSLVerification(self, CertificateID, ValidationMethod = ('CNAME_CSR_HASH')):
@@ -426,7 +434,7 @@ class ZeroSSL():
         except Exception as CAVerificationError:
             logging.exception(CAVerificationError)
             return False
-    #
+    # TESTPASS 25K21
 
     # Download certificate from ZeroSSL
     def ZeroSSLDownloadCA(self, CertificateID = (None)):
@@ -459,7 +467,7 @@ class ZeroSSL():
         except Exception as DownloadCAError:
             logging.exception(DownloadCAError)
             return False
-    #
+    # TESTPASS 25K21
 
     # Cancel certificate from ZeroSSL
     def ZeroSSLCancelCA(self, CertificateID):
@@ -475,7 +483,7 @@ class ZeroSSL():
         except Exception as CancelCAError:
             logging.exception(CancelCAError)
             return CancelCAError
-    #
+    # TESTPASS 25K22
 
     # Revoke certificate from ZeroSSL
     def ZeroSSLRevokeCA(self, CertificateID, RevokeReason = (None)):
@@ -497,4 +505,4 @@ class ZeroSSL():
         except Exception as RevokeCAError:
             logging.exception(RevokeCAError)
             return False
-    #
+    # TESTPASS 25K22

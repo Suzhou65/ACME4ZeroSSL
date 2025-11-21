@@ -22,13 +22,13 @@ def main():
         Rt.Message("Error occurred during certificates download.")
         raise Exception()
     elif type(CertificateContent) is str:
-        Rt.Message(f"Error occurred during download certificate.\r\n{CertificateContent}")
+        Rt.Message(f"Error occurred during download certificate. Error status: {CertificateContent}")
         raise Exception()
     # Download certificate and save to folder
     elif type(CertificateContent) is dict and ("certificate.crt") in CertificateContent:
         ResultCheck = Rt.CertificateInstall(CertificateContent)
     if type(ResultCheck) is list or type(ResultCheck) is str:
-        Rt.Message(f"Certificate been downloaded.\r\nYou may need to restart server manually.")
+        Rt.Message(f"Certificate been downloaded. You may need to restart server manually.")
     elif type(ResultCheck) is bool:
         Rt.Message("Error occurred during certificate saving.")
         raise Exception()
@@ -38,4 +38,4 @@ if __name__ == "__main__":
         main()
     except Exception:
         exit(0)
-#
+# TESTPASS 25K22

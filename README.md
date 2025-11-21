@@ -36,10 +36,10 @@ Even though I can update CNAME record through Cloudflare API, certificate downlo
 Developed to automate renewal certificate with ZeroSSL REST API, pair with Cloudflare hosting DNS records for CNAME challenge.
 
 ## Limitation
-```diff
-- Single Common Name (CN), or single CN & single Subject Alternative Name (SAN) pairs.
-- Currently support CNAME challenge only, HTTP/HTTPS challenge file support TBD. 
-```
+> **Note**  
+> Single Common Name (CN), or single CN & single Subject Alternative Name (SAN) pairs.  
+> Currently support CNAME challenge only, HTTP/HTTPS challenge file support TBD. 
+
 ## Usage
 ### Configuration file
 Using JSON format file storage configuration.
@@ -80,27 +80,32 @@ Using JSON format file storage configuration.
    }
 }
 ```
-Configuration file must include following parameters:  
 
-+ ```Telegram BOT``` token and chat ID for status notifications.
-+ ```ZeroSSL API Key```
-+ ```Cloudflare configuration``` include API Key, auth email, Zone ID and Specific DNS records.
-+ ```Domains``` list that require certificate renewal.
-+ ```Certificate``` include CSR signing configure, CSR, Pending/Active Private key and Certificates path.
-+ ```FileChallenge``` files path for HTTP/HTTPS file challenge, usually your Apache/Nginx webpage folder.
+Configuration file must include following parameters:
++ **Telegram BOTS token** storage at `Token` inside `Telegram_BOTs`, **Chat ID** storage at `ChatID`.
++ **Cloudflare API Key** storage at `Token` inside `CloudflareAPI`, **auth email** storage at `Mail`.
+> **Note**  
+> If you only need ACME certification for a **single domain name**, simply keep only that one domain in both the `CNAMERecordsID` list inside `CloudflareRecords`.
 
-```diff
-- CNAMERecordsID & Domains list object are structured to match ZeroSSL REST API response structure. Even when single Common Name, leave empty ("") string as placeholder maintain compatibility.
-```
++ **Domains Cloudflare Zone id** storage at `ZoneID`, **CNAME records ID** storage at `CNAMERecordsID` list.
++ **ZeroSSL REST API Key** storage at `AccessKey` inside `ZeroSSLAPI`.
++ ```Domains``` list indise ```Certificate``` is the domain require renewal certificate.
+> **Note**  
+> If you only need ACME certification for a **single domain name**, simply keep only that one domain in `Domains` list inside `Certificate`.
++ `Certificate` also include CSR signing configure, CSR, Pending/Active Private key and Certificates path.
+> **Note**  
+> For fail-safe, private key won't update until renewal Certificate was download, will storage as pending key. 
++ `FileChallenge` files path for HTTP/HTTPS file challenge, usually your Apache/Nginx webpage folder.
 
 ### Cloudflare API
 For using CNAME challenge function, you need to domain registered with Cloudflare, or choice Cloudflare as DNS hosting service.
 
-Then, login ```Cloudflare Dashboard```, select the domain you hosting, find the ```Get your API token banner```, click ```API Tokens options```.
+Then, login `Cloudflare Dashboard`, select the domain you hosting, find the `Get your API token banner`, click `API Tokens options`.
 
-Modify the token’s permissions. ```only allowing DNS record edit```, then generate API Token. The token secret is only shown once, make sure to copy the secret to a secure place.
+Modify the token’s permissions. `only allowing DNS record edit`, then generate API Token. The token secret is only shown once, make sure to copy the secret to a secure place.
 
-Please remove the ```Bearer``` string and blank.
+> **Note**  
+> Please remove the `Bearer` string and blank.
 
 ### ZeroSSL REST API
 Login ZeroSSL, go to [Developer](https://app.zerossl.com/developer) page, you will find your ZeroSSL API Key, make sure to copy the secret to a secure place.
@@ -115,88 +120,158 @@ If the chat channel wasn't created, the Telegram API will return ```HTTP 400 Bad
 ## Import module
 ```python
 # Import as module
-import acme4zerossl
-# Import the function independently
-from acme4zerossl import CreateCSR
+import acme4zerossl as acme
 ```
 
 ## Script
 ### Verify Cloudflare token
 ```python
-from acme4zerossl import VerifyCFToken
+import acme4zerossl as acme
+
 ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
+Cf = acme.Cloudflare(ConfigFilePath)
 # Output result's value as string only, not fully result.
-VerifyCFToken(ConfigFilePath)
+Cf.VerifyCFToken()
 ```
 The demonstration script is named ```script_verify.py```
+
 ### Find CNAME records ID
 ```python
-from acme4zerossl import GetCFRecords
+import acme4zerossl as acme
+
 ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
-FileOutput = None
+Cf = acme.Cloudflare(ConfigFilePath)
 # Output result's value as dictionary object.
 # Adding File Output for output JSON file.
-GetCFRecords(ConfigFilePath, FileOutput)
+Cf.GetCFRecords(FileOutput = None)
 ```
-Output is dictionary object contain fully cloudflare dns records belong specify Zone id.
+Output is `dictionary object` contain fully Cloudflare dns records belong specify Zone id.
 
 ### Verify via CNAME challenge
 ```diff
 + Support webpage server reload or restart (optional).
-+ acme.CertificateInstall(CertificateContent, CertificateContent, ServerReloadCommand)
 ```
+
 ```python
 import acme4zerossl as acme
-ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
-ServerCommand = None
-# ["sudo", "service", "apache2", "reload"]
-# ServerCommand must be list object.
+from time import sleep
+from sys import exit
 
-# Create certificates signing request
-acme.CreateCSR(ConfigFilePath)
-# Sending certificate create request to ZeroSSl
-VerifyRequest = acme.ZeroSSLCreateCA(ConfigFilePath)
-# Phrasing ZeroSSL verify, select CNAME challenge
-VerifyData = acme.ZeroSSLVerifyData(VerifyRequest)
-# Update CNAME via Cloudflare API
-if ("additional_domains_cname") not in VerifyData:
-   UpdatePayloads = [
-      VerifyData['common_name_cname']]
-   acme.UpdateCFCNAME(ConfigFilePath, UpdatePayload)
-elif ("additional_domains_cname") in VerifyData:
-   UpdatePayloads = [
-      VerifyData['common_name_cname'],
-      VerifyData['additional_domains_cname']]
-for UpdatePayload in UpdatePayloads:
-   acme.UpdateCFCNAME(ConfigFilePath, UpdatePayload)
-# Verify CNAME challenge
-CertificateID = VerifyData['id']
-acme.ZeroSSLVerification(ConfigFilePath, CertificateID)
-# Download certificates
-CertificateContent = acme.ZeroSSLDownloadCA(ConfigFilePath, CertificateID)
-# Install certificates
-acme.CertificateInstall(ConfigFilePath, CertificateContent, ServerCommand)
+ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
+# Apache2       ['systemctl', 'reload', 'apache2']
+# Nginx         ['service', 'nginx', 'restart']
+ServerCommand  = None
+
+# Script
+def main():
+    Rt = acme.Runtime(ConfigFilePath)
+    Tg = acme.Telegram(ConfigFilePath)
+    Cf = acme.Cloudflare(ConfigFilePath)
+    Zs = acme.ZeroSSL(ConfigFilePath)
+    # Create certificates signing request
+    ResultCreateCSR = Rt.CreateCSR()
+    # Sending CSR
+    VerifyRequest = Zs.ZeroSSLCreateCA()
+    # Phrasing ZeroSSL verify
+    VerifyData = Zs.ZeroSSLVerifyData(VerifyRequest, Mode="CNAME")
+    # Update CNAME via Cloudflare API
+    if ("additional_domains_cname") not in VerifyData:
+        UpdatePayloads = [VerifyData['common_name_cname']]
+    elif ("additional_domains_cname") in VerifyData:
+        UpdatePayloads = [VerifyData['common_name_cname'],
+                          VerifyData['additional_domains_cname']]
+    for UpdatePayload in UpdatePayloads:
+        ResultUpdateCFCNAME = Cf.UpdateCFCNAME(UpdatePayload)
+    # Wait DNS records update and active
+    sleep(30)
+    # Verify CNAME challenge
+    CertificateID = VerifyData['id']
+    VerifyResult = Zs.ZeroSSLVerification(CertificateID)
+    if type(VerifyResult) is dict and VerifyResult['status'] == ("pending_validation"):
+        Rt.Message("CNAME verify successful, wait certificate issued.")
+        sleep(30)
+    # Verify successful and been issued
+    elif type(VerifyResult) is dict and VerifyResult['status'] == ("issued"):
+        Rt.Message("CNAME verify successful, certificate been issued.")
+        sleep(5)
+    # Download certificates
+    CertificateContent = Zs.ZeroSSLDownloadCA(CertificateID)
+    # Install certificate to server folder
+    ResultCheck = Rt.CertificateInstall(CertificateContent, ServerCommand)
+# Runtime
+try:
+   main()
+except Exception:
+   exit(0)
 ```
 Demonstration script named ```script_cname.py```, which including Telegram BOTs notify and check validity date of certificate.
+
 ### Download certificate
 
 ```python
+import acme4zerossl as acme
+from sys import exit
 
+# Config
+ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
+# Script
+def main():
+    Rt = acme.Runtime(ConfigFilePath)
+    Zs = acme.ZeroSSL(ConfigFilePath)
+    # Print prompt
+    Rt.Message("Certificate manual download script start.\r\nDownload certificate hash reference from cache file by default.")
+    # Input certificate hash manually
+    CertificateID = input("Please input certificate ID (hash), or press ENTER using cache file: ")
+    # Download certificate payload
+    if len(CertificateID) == 0:
+        CertificateContent = Zs.ZeroSSLDownloadCA()
+    else:
+        CertificateContent = Zs.ZeroSSLDownloadCA(CertificateID)
+    # Download certificate and save to folder
+    ResultCheck = Rt.CertificateInstall(CertificateContent)
+# Runtime
+try:
+   main()
+except Exception:
+   exit(0)
 ```
+
 ### Cancel certificate
 ``` diff
 - Please note that only certificates with status draft or pending_validation can be cancelled.
 - After verification, the certificates cannot been cancelled.
 ```
 ```python
-from acme4zerossl import ZeroSSLCancelCA
-ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
+import acme4zerossl as acme
+from sys import exit
 
-# Input certificate hash manually
-CertificateID = input("Please input certificate ID (hash): ")
-ZeroSSLCancelCA(ConfigFilePath, CertificateID)
+# Config
+ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
+# Script
+def main():
+    Rt = acme.Runtime(ConfigFilePath)
+    Zs = acme.ZeroSSL(ConfigFilePath)
+    # Input certificate hash manually
+    CertificateID = input("Please input certificate ID (hash): ")
+    # Cancel certificate
+    CancelCAResult = Zs.ZeroSSLCancelCA(CertificateID)
+    # Status check
+    if type(CancelCAResult) is dict and CancelCAResult['success'] == 1:
+        Rt.Message(f"Certificate ID: {CertificateID} has been cancelled.")
+    elif type(CancelCAResult) is dict and CancelCAResult['success'] == 0:
+        Rt.Message("ZeroSSL REST API request successful, however unable cancel certificate.")
+    elif type(CancelCAResult) is int:
+        Rt.Message(f"Unable connect ZeroSSL API, HTTP error code: {CancelCAResult}.")
+    else:
+        Rt.Message("Error occurred during cancel certificate.")
+# Runtime
+try:
+   main()
+except Exception:
+   exit(0)
 ```
 Demonstration script named ```script_cancel.py```
+
 ### Revoke certificate
 ``` diff
 - ZeroSSL REST API require reason for certificate revoke (Optional).
@@ -204,29 +279,56 @@ Demonstration script named ```script_cancel.py```
 - If a certificate has already been successfully revoked you will get a success response nevertheless.
 ```
 ```python
-from acme4zerossl import ZeroSSLRevokeCA
+import acme4zerossl as acme
+from sys import exit
+
+# Config
 ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
-# ZeroSSL REST API need reason for certificate revoke
-# Optional RevokeReason string: keyCompromise, affiliationChanged, Superseded, cessationOfOperation
-# Default is "Unspecified" as None.
-RevokeReason = None
-# Input certificate hash manually
-CertificateID = input("Please input certificate ID (hash): ")
-ZeroSSLRevokeCA(ConfigFilePath, CertificateID, RevokeReason)
+# Script
+def main():
+    Rt = acme.Runtime(ConfigFilePath)
+    Revoke = acme.ZeroSSL(ConfigFilePath)
+    # Input certificate hash manually
+    CertificateID = input("Please input certificate ID (hash): ")
+    # Revoke certificate
+    RevokeStatus = Revoke.ZeroSSLRevokeCA(CertificateID)
+    # Status check
+    if type(RevokeStatus) is dict and RevokeStatus['success'] == 1:
+        Rt.Message(f"Certificate ID: {CertificateID} has been revoked.")
+    elif type(RevokeStatus) is dict and RevokeStatus['success'] == 0:
+        Rt.Message("ZeroSSL REST API request successful, however unable revoke certificate.")
+        raise Exception()
+    elif type(RevokeStatus) is int:
+        Rt.Message(f"Unable connect ZeroSSL API, HTTP error code: {RevokeStatus}.")
+        raise Exception()
+    else:
+        Rt.Message("Error occurred during revoke certificate.")
+        raise Exception()
+# Runtime
+try:
+   main()
+except Exception:
+   exit(0)
 ```
 Demonstration script named ```script_revoke.py```
 
 ## Dependencies
 ### Python version
-* Testing passed on above Python version: ```3.11.2```, ```3.12.2```.
-* Version ```3.9.2``` and ```3.9.6``` workable.
+> Testing passed on above Python version:
++ 3.12.11
++ 3.9.6
++ 3.9.2
++ 3.7.3
+
 ### Python module
-* logging
-* json
-* requests
-* subprocess
-* time
-* pathlib
++ logging
++ pathlib
++ json
++ datetime
++ textwrap
++ requests
++ subprocess
++ time
 * sys
 
 ## License
