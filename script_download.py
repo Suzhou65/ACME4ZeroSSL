@@ -9,7 +9,7 @@ def main():
     Rt = acme.Runtime(ConfigFilePath)
     Zs = acme.ZeroSSL(ConfigFilePath)
     # Print prompt
-    Rt.Message("Certificate manual download script start.\r\nDownload certificate hash reference from cache file by default.")
+    Rt.Message("Certificate manual download script start. Download certificate hash reference from cache file by default.")
     # Input certificate hash manually
     CertificateID = input("Please input certificate ID (hash), or press ENTER using cache file: ")
     # Download certificate payload

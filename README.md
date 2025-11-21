@@ -148,9 +148,8 @@ Cf.GetCFRecords(FileOutput = None)
 Output is `dictionary object` contain fully Cloudflare dns records belong specify Zone id.
 
 ### Verify via CNAME challenge
-```diff
-+ Support webpage server reload or restart (optional).
-```
+> **Note**  
+> Support webpage server reload or restart (optional).
 
 ```python
 import acme4zerossl as acme
@@ -165,7 +164,6 @@ ServerCommand  = None
 # Script
 def main():
     Rt = acme.Runtime(ConfigFilePath)
-    Tg = acme.Telegram(ConfigFilePath)
     Cf = acme.Cloudflare(ConfigFilePath)
     Zs = acme.ZeroSSL(ConfigFilePath)
     # Create certificates signing request
@@ -219,7 +217,7 @@ def main():
     Rt = acme.Runtime(ConfigFilePath)
     Zs = acme.ZeroSSL(ConfigFilePath)
     # Print prompt
-    Rt.Message("Certificate manual download script start.\r\nDownload certificate hash reference from cache file by default.")
+    Rt.Message("Certificate manual download script start. Download certificate hash reference from cache file by default.")
     # Input certificate hash manually
     CertificateID = input("Please input certificate ID (hash), or press ENTER using cache file: ")
     # Download certificate payload
@@ -237,10 +235,9 @@ except Exception:
 ```
 
 ### Cancel certificate
-``` diff
-- Please note that only certificates with status draft or pending_validation can be cancelled.
-- After verification, the certificates cannot been cancelled.
-```
+> **Note**  
+> Please note that only certificates with status draft or `pending_validation` can be cancelled. After verification, the certificates cannot been cancelled.
+
 ```python
 import acme4zerossl as acme
 from sys import exit
@@ -273,11 +270,10 @@ except Exception:
 Demonstration script named ```script_cancel.py```
 
 ### Revoke certificate
-``` diff
-- ZeroSSL REST API require reason for certificate revoke (Optional).
-- Only certificates with status issued can be revoked.
-- If a certificate has already been successfully revoked you will get a success response nevertheless.
-```
+> **Note**  
+> ZeroSSL REST API require reason for certificate revoke (Optional).
+> Only certificates with status `issued` can be revoked. If a certificate has already been successfully revoked you will get a success response nevertheless.
+
 ```python
 import acme4zerossl as acme
 from sys import exit
@@ -314,7 +310,7 @@ Demonstration script named ```script_revoke.py```
 
 ## Dependencies
 ### Python version
-> Testing passed on above Python version:
+Testing passed on above Python version:
 + 3.12.11
 + 3.9.6
 + 3.9.2
