@@ -239,13 +239,40 @@ class Telegram():
             if TgResponse.status_code == 200:
                 TgResponse.close()
                 self.RtM.Message(TelegramMessage)
+            elif TgResponse.status_code == 400:
+                TgResponse.close()
+                self.RtM.Message("Telegram ChatID is empty, notifications will not be sent.")
+                logging.exception(TgResponse.status_code)
             else:
                 TgResponse.close()
                 logging.exception(TgResponse.status_code)
         except Exception as TelegramErrorStatus:
             logging.exception(TelegramErrorStatus)
-    # TESTPASS 25K15
+    # TESTPASS 25K23 Mod
 
+    # Get Telegram ChatID
+    def GetChatID(self):
+        # Connetc URL
+        TgAskURL = (self.Com.Telegram + f"{self.BotToken}/getUpdates")
+        try:
+            TgAskResponse = requests.post(TgAskURL, timeout=30)
+            if TgAskResponse.status_code == 200:
+                TgAskData = json.loads(TgAskResponse.text)
+                TgAskResponse.close()
+                # Empty result
+                if len(TgAskData['result']) == 0:
+                    self.RtM.Message("You must send message to bot first.")
+                # Select ChatID
+                else:
+                    CheckChatID = TgAskData["result"][0]['message']['chat']['id']
+                    self.RtM.Message(f"You ChatID is: {CheckChatID}")
+            else:
+                TgAskResponse.close()
+                logging.exception(TgAskResponse.status_code)
+        except Exception as TelegramErrorStatus:
+            logging.exception(TelegramErrorStatus)
+    # TESTPASS 25K23
+        
 # Cloudflare API package
 class Cloudflare():
     def __init__(self, ConfigFilePath):

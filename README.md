@@ -59,7 +59,7 @@ Using JSON format file storage configuration.
    },
    "ZeroSSLAPI":{
       "AccessKey": "",
-      "Cache": "/Documents/script/cache.json"
+      "Cache": "/Documents/script/cache.domain.json"
    },
    "Certificate":{
       "Domains": ["www.example.com", "example.com"],
@@ -68,9 +68,9 @@ Using JSON format file storage configuration.
       "Locality": "",
       "Organization": "",
       "OrganizationalUnit": "",
-      "Config": "/Documents/script/csr.conf",
-      "CSR": "/Documents/script/certificate.csr",
-      "PendingPK": "/Documents/script/cache.key",
+      "Config": "/Documents/script/domain.csr.conf",
+      "CSR": "/Documents/script/domain.csr",
+      "PendingPK": "/Documents/script/cache.domain.key",
       "PK": "/var/certificate/private.key",
       "CA": "/var/certificate/certificate.crt",
       "CAB": "/var/certificate/ca_bundle.crt"
@@ -100,12 +100,9 @@ Configuration file must include following parameters:
 ### Cloudflare API
 For using CNAME challenge function, you need to domain registered with Cloudflare, or choice Cloudflare as DNS hosting service.
 
-Then, login `Cloudflare Dashboard`, select the domain you hosting, find the `Get your API token banner`, click `API Tokens options`.
-
-Modify the token’s permissions. `only allowing DNS record edit`, then generate API Token. The token secret is only shown once, make sure to copy the secret to a secure place.
-
 > **Note**  
 > Please remove the `Bearer` string and blank.
+> For safty, modify the token’s permissions. `only allowing DNS record edit` is is recommended, also make sure to copy the secret to a secure place.
 
 ### ZeroSSL REST API
 Login ZeroSSL, go to [Developer](https://app.zerossl.com/developer) page, you will find your ZeroSSL API Key, make sure to copy the secret to a secure place.
@@ -115,11 +112,27 @@ If you suspect that your API Key has been compromised, please click ```Reset Key
 ### Telegram BOTs
 Using Telegram Bot, contect [BotFather](https://t.me/botfather) create new Bot accounts.
 
-If the chat channel wasn't created, the Telegram API will return ```HTTP 400 Bad Request```. You need to start the chat channel with that bot, i.e. say ```Hello the world``` to him.
+At this point chat channel wasn't created, so you can't find the `ChatID`. Running `Message2Me` function will receive `400 Bad Request` from Telegram API, following message will printout:
+```
+2025-05-14 19:19:00 | Telegram ChatID is empty, notifications will not be sent.
+```
+You need to start the chat channel with that bot, i.e. say `Hello the world` to him. Then running `GetChatID`
+```python
+import acme4zerossl
+ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
+Tg = acme4zerossl.Telegram(ConfigFilePath)
+Tg.GetChatID()
+```
+Now ChatID will printout:
+```
+2025-05-14 19:19:18 | You ChatID is: XXXXXXXXX
+```
 
 ## Import module
 ```python
 # Import as module
+import acme4zerossl
+# Alternative
 import acme4zerossl as acme
 ```
 
@@ -325,7 +338,7 @@ Testing passed on above Python version:
 + requests
 + subprocess
 + time
-* sys
++ sys
 
 ## License
 General Public License -3.0
@@ -333,5 +346,6 @@ General Public License -3.0
 ## Resources
 ### ZeroSSL API
 - [ZeroSSL REST APIdocumentation](https://zerossl.com/documentation/api/) the official documentation.
+
 ### Reference repository
 - [ZeroSSL-CertRenew](https://github.com/ajnik/ZeroSSL-CertRenew/tree/master) for HTTP/HTTPS challenge file.
