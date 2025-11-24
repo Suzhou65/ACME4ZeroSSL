@@ -444,7 +444,16 @@ class ZeroSSL():
     # TESTPASS CNAME
 
     # Verification, when using CNAME and HTTP/HTTPS file verify
-    def ZeroSSLVerification(self, CertificateID, ValidationMethod = ('CNAME_CSR_HASH')):
+    def ZeroSSLVerification(self, CertificateID = (None), ValidationMethod = ('CNAME_CSR_HASH')):
+        # Reading certificate hash from cache
+        if CertificateID is None:
+            CacheInput = Path(self.Validation)
+            with CacheInput.open("r", encoding = "utf-8") as CacheFile:
+                CacheData = json.load(CacheFile)
+            CertificateID = CacheData['id']
+        # Using input string
+        elif CertificateID is not None:
+            pass
         # Verification URL and verification method, default is CNAME
         Verification = (self.Com.ZeroSSL + f"/{CertificateID}/challenges?access_key={self.ZeroSSLAuth}")
         VerifyMethod = {"validation_method": ValidationMethod}
@@ -461,7 +470,7 @@ class ZeroSSL():
         except Exception as CAVerificationError:
             logging.exception(CAVerificationError)
             return False
-    # TESTPASS 25K21
+    # TESTPASS 25K24 Mod
 
     # Download certificate from ZeroSSL
     def ZeroSSLDownloadCA(self, CertificateID = (None)):
