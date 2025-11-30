@@ -13,30 +13,38 @@ def main():
     Rt.Message("Manual verify start. Certificate hash reference from cache file by default.")
     CertificateID = input("Please input certificate ID (hash), or press ENTER using cache file: ")
     # Verification
-    if len(CertificateID) == 0:
-        Status = Zs.ZeroSSLVerification()
-    else:
-        Status = Zs.ZeroSSLVerification(CertificateID)
+    Status = Zs.ZeroSSLVerification(CertificateID or None)
     # Check
-    if type(Status) is int:
-        Rt.Message(f"Unable connect ZeroSSL API, HTTP Error: {Status}.")
-        raise Exception()
-    elif type(Status) is bool:
+    if isinstance(Status, bool):
         Rt.Message("Error occurred during verification.")
         raise Exception()
-    # Possible errors respon
-    elif type(Status) is dict and ("error") in Status:
-        Rt.Message(f"{Status['error']['type']}")
+    elif isinstance(Status, int):
+        Rt.Message(f"Unable connect ZeroSSL API, HTTP Error: {Status}.")
         raise Exception()
-    # Unverified
-    elif type(Status) is dict and Status['status'] == ("draft"):
-        Rt.Message("")
-    # Verify successful
-    elif type(Status) is dict and Status['status'] == ("pending_validation"):
-        Rt.Message("Verify successful, please wait certificate issued.")
-    # Issued
-    elif type(Status) is dict and Status['status'] == ("issued"):
-        Rt.Message("Verify successful, certificate been issued.")
+    # Possible errors respon
+    elif isinstance(Status, dict) and ("error") in Status:
+        ErrorStatus = Status['error'] or {}
+        ErrorType = ErrorStatus.get("type", "Unknown Error")
+        Rt.Message(ErrorType)
+        raise Exception()
+    elif isinstance(Status, dict) and ("status") in Status:
+        VerificationStatus = Status.get("status")
+        # Unverified
+        if VerificationStatus == ("draft"):
+            Rt.Message("Not Verify yet.")
+        # Verify successful
+        elif VerificationStatus == ("pending_validation"):
+            Rt.Message("Verify successful, please wait certificate issued.")
+        # Issued
+        elif VerificationStatus == ("issued"):
+            Rt.Message("Verify successful, certificate been issued.")
+        # Incase ZeroSSL adding more status
+        else:
+            Rt.Message(VerificationStatus)
+            raise Exception()
+    else:
+        Rt.Message(f"Unexpected Type/Format: {type(Status)} -> {Status}")
+        raise Exception()
 
 # Runtime
 if __name__ == "__main__":

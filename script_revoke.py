@@ -13,17 +13,24 @@ def main():
     # Revoke certificate
     RevokeStatus = Revoke.ZeroSSLRevokeCA(CertificateID)
     # Status check
-    if type(RevokeStatus) is dict and RevokeStatus['success'] == 1:
-        Rt.Message(f"Certificate ID: {CertificateID} has been revoked.")
-    elif type(RevokeStatus) is dict and RevokeStatus['success'] == 0:
-        Rt.Message("ZeroSSL REST API request successful, however unable revoke certificate.")
-        raise Exception()
-    elif type(RevokeStatus) is int:
+    if isinstance(RevokeStatus, bool):
+        Rt.Message("Error occurred during revoke.")
+    elif isinstance(RevokeStatus, int):
         Rt.Message(f"Unable connect ZeroSSL API, HTTP error code: {RevokeStatus}.")
         raise Exception()
+    elif isinstance(RevokeStatus, dict) and ("success") in RevokeStatus:
+        RevokeResult = RevokeStatus.get("success", None)
+        if RevokeResult == 1:
+            Rt.Message(f"Certificate ID: {CertificateID} has been revoked.")
+        elif RevokeResult == 0:
+            Rt.Message("ZeroSSL REST API request successful, however unable revoke certificate.")
+        else:
+            Rt.Message(f"Undefined status: {RevokeResult}")
+            raise Exception()
     else:
         Rt.Message("Error occurred during revoke certificate.")
         raise Exception()
+
 # Runtime
 if __name__ == "__main__":
     try:

@@ -17,21 +17,23 @@ def main():
     Zs = acme.ZeroSSL(ConfigFilePath)
     # Create certificates signing request
     ResultCreateCSR = Rt.CreateCSR()
-    if type(ResultCreateCSR) is bool:
+    if isinstance(ResultCreateCSR, bool):
         Tg.Message2Me("Error occurred during Create CSR and Private key.")
         raise Exception()
-    elif type(ResultCreateCSR) is int:
+    elif isinstance(ResultCreateCSR, int):
         Rt.Message("Successful create CSR and Private key.")
     # Sending CSR
     VerifyRequest = Zs.ZeroSSLCreateCA()
-    if type(VerifyRequest) is int:
-        Tg.Message2Me(f"Unable connect ZeroSSL API, HTTP Error: {VerifyRequest}.")
-        raise Exception()
-    elif type(VerifyRequest) is bool:
+    # Function error
+    if isinstance(VerifyRequest, bool):
         Tg.Message2Me("Error occurred during request new certificate.")
         raise Exception()
+    # ZeroSSL REST API HTTP error
+    elif isinstance(VerifyRequest, int):
+        Tg.Message2Me(f"Unable connect ZeroSSL API, HTTP Error: {VerifyRequest}.")
+        raise Exception()
     # Phrasing ZeroSSL verify
-    elif type(VerifyRequest) is dict:
+    elif isinstance(VerifyRequest, dict):
         VerifyData = Zs.ZeroSSLVerifyData(VerifyRequest, Mode="CNAME")
         Rt.Message(f"ZeroSSL API request successful, certificate hash: {VerifyData['id']}")
     # Update CNAME via Cloudflare API
@@ -40,71 +42,99 @@ def main():
     elif ("additional_domains_cname") in VerifyData:
         UpdatePayloads = [VerifyData['common_name_cname'],
                           VerifyData['additional_domains_cname']]
+    # Update Cloudflare CNAME records
     for UpdatePayload in UpdatePayloads:
         ResultUpdateCFCNAME = Cf.UpdateCFCNAME(UpdatePayload)
-        if type(ResultUpdateCFCNAME) is dict and ResultUpdateCFCNAME['success'] == True:
-            Rt.Message("Successful update CNAME record from Cloudflare.")
-            sleep(5)
-        elif type(ResultUpdateCFCNAME) is dict and ResultUpdateCFCNAME['success'] == False:
-            Tg.Message2Me(f"Cloudflare update Failed, {ResultUpdateCFCNAME['errors']}")
+        # Function error
+        if isinstance(ResultUpdateCFCNAME, bool):
+            Tg.Message2Me(f"Error occurred during update CNAME")
             raise Exception()
-        elif type(ResultUpdateCFCNAME) is int:
+        # Cloudflare API HTTP error
+        elif isinstance(ResultUpdateCFCNAME, int):
             Tg.Message2Me(f"Unable connect Cloudflare API, HTTP Error: {ResultUpdateCFCNAME}")
             raise Exception()
+        # Check CNAME update result
+        elif isinstance(ResultUpdateCFCNAME, dict):
+            ResultUpdateResult = ResultUpdateCFCNAME.get("success", None)
+            if ResultUpdateResult == True:
+                Rt.Message("Successful update CNAME record from Cloudflare.")
+                sleep(5)
+            elif ResultUpdateResult == False:
+                Tg.Message2Me(f"Cloudflare update Failed, {ResultUpdateCFCNAME['errors']}")
+                raise Exception()
+            else:
+                Tg.Message2Me("Undefined error occurred during connect Cloudflare API")
+                raise Exception()
         else:
+            Tg.Message2Me("Undefined error occurred during update CNAME")
             raise Exception()
     # Wait DNS records update and active
     sleep(30)
     # Verify CNAME challenge
     CertificateID = VerifyData['id']
     VerifyResult = Zs.ZeroSSLVerification(CertificateID)
-    if type(VerifyResult) is int:
-        Tg.Message2Me(f"Unable connect ZeroSSL API, HTTP Error: {VerifyResult}.")
-        raise Exception()
-    elif type(VerifyResult) is bool:
+    # Function error
+    if isinstance(VerifyResult, bool):
         Tg.Message2Me("Error occurred during CNAME verification.")
         raise Exception()
-    elif type(VerifyResult) is dict and ("error") in VerifyResult:
-        Tg.Message2Me(f"{VerifyResult['error']['type']}")
-        raise Exception (VerifyResult['error']['type'])
-    # Verify successful, wait issued
-    elif type(VerifyResult) is dict and VerifyResult['status'] == ("pending_validation"):
-        Rt.Message("CNAME verify successful, wait certificate issued.")
-        sleep(30)
-    # Verify successful and been issued
-    elif type(VerifyResult) is dict and VerifyResult['status'] == ("issued"):
-        Rt.Message("CNAME verify successful, certificate been issued.")
-        sleep(5)
+    # ZeroSSL REST API HTTP error
+    elif isinstance(VerifyResult, int):
+        Tg.Message2Me(f"Unable connect ZeroSSL API, HTTP Error: {VerifyResult}.")
+        raise Exception()
+    # Possible errors respon
+    elif isinstance(VerifyResult, dict) and ("error") in VerifyResult:
+        VerifyErrorStatus = VerifyResult['error'] or {}
+        ErrorType = VerifyErrorStatus.get("type", "Unknown Error")
+        Rt.Message(f"Error occurred during CNAME verification: {ErrorType}")
+        raise Exception (ErrorType)
+    # Check verify status
+    elif isinstance(VerifyResult, dict) and ("status") in VerifyResult:
+        VerifyStatus = VerifyResult.get("status")
+        # Verify successful, wait issued
+        if VerifyStatus == ("draft"):
+            Rt.Message("Not Verify yet.")
+            raise Exception()
+        elif VerifyStatus == ("pending_validation"):
+            Rt.Message("CNAME verify successful, wait certificate issued.")
+            sleep(30)
+        # Verify successful and been issued
+        elif VerifyStatus == ("issued"):
+            Rt.Message("CNAME verify successful, certificate been issued.")
+            sleep(5)
     # Download certificates
     CertificateContent = Zs.ZeroSSLDownloadCA(CertificateID)
-    if type(CertificateContent) is bool:
+    if isinstance(CertificateContent, bool):
         Tg.Message2Me("Error occurred during certificates download.")
         raise Exception()
-    elif type(CertificateContent) is str:
+    elif isinstance(CertificateContent, str):
         Tg.Message2Me(f"Error occurred during download certificate. {CertificateContent}")
         raise Exception(CertificateContent)
-    elif type(CertificateContent) is dict and ("certificate.crt") in CertificateContent:
+    elif isinstance(CertificateContent, dict) and ("certificate.crt") in CertificateContent:
         Rt.Message("Certificate has been downloaded.")
         sleep(5)
     # Install certificate to server folder
     ResultCheck = Rt.CertificateInstall(CertificateContent, ServerCommand)
-    if type(ResultCheck) is list or type(ResultCheck) is str:
-        Tg.Message2Me(f"Certificate been renewed and installed, will expires in {VerifyResult['expires']}.")
-    elif type(ResultCheck) is int:
-        Tg.Message2Me(f"Certificate been renewed, will expires in {VerifyResult['expires']}. You may need to restart server manually.")
-    elif type(ResultCheck) is bool:
+    ExpiresDate = VerifyResult.get("expires", None)
+    if isinstance(ResultCheck, bool):
         Tg.Message2Me("Error occurred during certificate install. You may need to download and install manually.")
         raise Exception()
+    elif isinstance(ResultCheck, int):
+        Tg.Message2Me(f"Certificate been renewed, will expires in {ExpiresDate}. You may need to restart server manually.")
+    elif isinstance(ResultCheck, (list,str)):
+        Tg.Message2Me(f"Certificate been renewed and installed, will expires in {ExpiresDate}.")
+    else:
+        raise Exception ()
+    
 # Runtime, including check validity date of certificate
 if __name__ == "__main__":
     try:
         Rt = acme.Runtime(ConfigFilePath)
         # Minimum is 14 days
         CertificateMinimum = Rt.ExpiresCheck()
-        if type(CertificateMinimum) is int:
-            Rt.Message(f"Certificate's validity date has {CertificateMinimum} days left.")
-        elif type(CertificateMinimum) is bool:
+        if isinstance(CertificateMinimum, bool):
             main()
+        elif isinstance(CertificateMinimum, int):
+            Rt.Message(f"Certificate's validity date has {CertificateMinimum} days left.")           
     except Exception:
         exit(0)
-# TESTPASS 25K21
+# UNT

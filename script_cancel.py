@@ -11,16 +11,26 @@ def main():
     # Input certificate hash manually
     CertificateID = input("Please input certificate ID (hash): ")
     # Cancel certificate
-    CancelCAResult = Zs.ZeroSSLCancelCA(CertificateID)
+    CancelStatus = Zs.ZeroSSLCancelCA(CertificateID)
     # Status check
-    if type(CancelCAResult) is dict and CancelCAResult['success'] == 1:
-        Rt.Message(f"Certificate ID: {CertificateID} has been cancelled.")
-    elif type(CancelCAResult) is dict and CancelCAResult['success'] == 0:
-        Rt.Message("ZeroSSL REST API request successful, however unable cancel certificate.")
-    elif type(CancelCAResult) is int:
-        Rt.Message(f"Unable connect ZeroSSL API, HTTP error code: {CancelCAResult}.")
+    if isinstance(CancelStatus, bool):
+        Rt.Message("Error occurred during cancel.")
+    elif isinstance(CancelStatus, int):
+        Rt.Message(f"Unable connect ZeroSSL API, HTTP error code: {CancelStatus}.")
+        raise Exception()
+    elif isinstance(CancelStatus, dict):
+        CancelResult = CancelStatus.get("success", None)
+        if CancelResult == 1:
+            Rt.Message(f"Certificate ID: {CertificateID} has been cancelled.")
+        elif CancelResult == 0:
+            Rt.Message("ZeroSSL REST API request successful, however unable cancel certificate.")
+        else:
+            Rt.Message(f"Undefined status: {CancelResult}")
+            raise Exception()
     else:
         Rt.Message("Error occurred during cancel certificate.")
+        raise Exception()
+
 # Runtime
 if __name__ == "__main__":
     try:

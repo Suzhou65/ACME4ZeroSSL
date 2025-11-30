@@ -518,7 +518,7 @@ class ZeroSSL():
                 return CancelRespon.status_code
         except Exception as CancelCAError:
             logging.exception(CancelCAError)
-            return CancelCAError
+            return False        
     # TESTPASS 25K22
 
     # Revoke certificate from ZeroSSL

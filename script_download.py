@@ -13,23 +13,22 @@ def main():
     # Input certificate hash manually
     CertificateID = input("Please input certificate ID (hash), or press ENTER using cache file: ")
     # Download certificate payload
-    if len(CertificateID) == 0:
-        CertificateContent = Zs.ZeroSSLDownloadCA()
-    else:
-        CertificateContent = Zs.ZeroSSLDownloadCA(CertificateID)
+    CertificateContent = Zs.ZeroSSLDownloadCA(CertificateID or None)
     # Check
-    if type(CertificateContent) is bool:
+    if isinstance(CertificateContent, bool):
         Rt.Message("Error occurred during certificates download.")
         raise Exception()
-    elif type(CertificateContent) is str:
+    elif isinstance(CertificateContent, str):
         Rt.Message(f"Error occurred during download certificate. Error status: {CertificateContent}")
         raise Exception()
     # Download certificate and save to folder
-    elif type(CertificateContent) is dict and ("certificate.crt") in CertificateContent:
+    elif isinstance(CertificateContent, dict) and ("certificate.crt") in CertificateContent:
         ResultCheck = Rt.CertificateInstall(CertificateContent)
-    if type(ResultCheck) is list or type(ResultCheck) is str:
+    if isinstance(ResultCheck, list):
         Rt.Message(f"Certificate been downloaded. You may need to restart server manually.")
-    elif type(ResultCheck) is bool:
+    elif isinstance(ResultCheck, str):
+        Rt.Message(f"Certificate been downloaded. You may need to restart server manually.")
+    elif isinstance(ResultCheck, bool):
         Rt.Message("Error occurred during certificate saving.")
         raise Exception()
 # Runtime
