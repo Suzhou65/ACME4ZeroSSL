@@ -4,6 +4,7 @@ from sys import exit
 
 # Config
 ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
+
 # Script
 def main():
     Rt = acme.Runtime(ConfigFilePath)
@@ -19,7 +20,7 @@ def main():
         Rt.Message(f"Unable connect ZeroSSL API, HTTP error code: {RevokeStatus}.")
         raise Exception()
     elif isinstance(RevokeStatus, dict) and ("success") in RevokeStatus:
-        RevokeResult = RevokeStatus.get("success", None)
+        RevokeResult = RevokeStatus.get("success","")
         if RevokeResult == 1:
             Rt.Message(f"Certificate ID: {CertificateID} has been revoked.")
         elif RevokeResult == 0:
@@ -30,11 +31,10 @@ def main():
     else:
         Rt.Message("Error occurred during revoke certificate.")
         raise Exception()
-
 # Runtime
 if __name__ == "__main__":
     try:
         main()
     except Exception:
         exit(0)
-# TESTPASS 25K22
+# QC 2025L14

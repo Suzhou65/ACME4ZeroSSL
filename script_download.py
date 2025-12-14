@@ -4,6 +4,7 @@ from sys import exit
 
 # Config
 ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
+
 # Script
 def main():
     Rt = acme.Runtime(ConfigFilePath)
@@ -23,18 +24,19 @@ def main():
         raise Exception()
     # Download certificate and save to folder
     elif isinstance(CertificateContent, dict) and ("certificate.crt") in CertificateContent:
-        ResultCheck = Rt.CertificateInstall(CertificateContent)
-    if isinstance(ResultCheck, list):
-        Rt.Message(f"Certificate been downloaded. You may need to restart server manually.")
-    elif isinstance(ResultCheck, str):
-        Rt.Message(f"Certificate been downloaded. You may need to restart server manually.")
-    elif isinstance(ResultCheck, bool):
+        Rt.Message(f"Downloading certificate...")
+    ResultCheck = Rt.CertificateInstall(CertificateContent)
+    if isinstance(ResultCheck, bool):
         Rt.Message("Error occurred during certificate saving.")
         raise Exception()
+    elif isinstance(ResultCheck, int):
+        Rt.Message("Certificate been downloaded to folder. You may need to restart server manually.")
+    elif isinstance(ResultCheck, (list,str)):
+        Rt.Message(f"Certificate been downloaded and server has reload or restart.")
 # Runtime
 if __name__ == "__main__":
     try:
         main()
     except Exception:
         exit(0)
-# TESTPASS 25K22
+# QC 2025L14

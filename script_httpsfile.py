@@ -11,7 +11,6 @@ ServerCommand  = None
 def main():
     Rt = acme.Runtime(ConfigFilePath)
     Tg = acme.Telegram(ConfigFilePath)
-    Cf = acme.Cloudflare(ConfigFilePath)
     Zs = acme.ZeroSSL(ConfigFilePath)
     # Create certificates signing request
     ResultCreateCSR = Rt.CreateCSR()
@@ -32,65 +31,43 @@ def main():
         raise Exception()
     # Phrasing ZeroSSL verify
     elif isinstance(VerifyRequest, dict):
-        VerifyData = Zs.ZeroSSLVerifyData(VerifyRequest, Mode="CNAME")
+        VerifyData = Zs.ZeroSSLVerifyData(VerifyRequest, Mode="FILE")
     # Check verify data
     if isinstance(VerifyData, bool):
         Rt.Message(f"Error occurred during phrasing ZeroSSL verify data.")
         raise Exception()
     elif isinstance(VerifyData, dict):
         Rt.Message(f"ZeroSSL API request successful, certificate hash: {VerifyData.get('id')}")
-    # Update CNAME via Cloudflare API
+    # Validation file path and content
     if ("additional_domains") in VerifyData:
-        UpdatePayloads = [
+        ValidationFiles = [
             VerifyData.get('common_name'),
             VerifyData.get('additional_domains')]
     elif ("additional_domains") not in VerifyData:
-        UpdatePayloads = [
+        ValidationFiles = [
             VerifyData.get('common_name')]
-    # Update Cloudflare CNAME records
-    for UpdatePayload in UpdatePayloads:
-        ResultUpdateCFCNAME = Cf.UpdateCFCNAME(UpdatePayload)
-        # Function error
-        if isinstance(ResultUpdateCFCNAME, bool):
-            Tg.Message2Me(f"Error occurred during update CNAME, may be config error.")
-            raise Exception()
-        # Cloudflare API HTTP error
-        elif isinstance(ResultUpdateCFCNAME, int):
-            Tg.Message2Me(f"Unable connect Cloudflare API, HTTP Error: {ResultUpdateCFCNAME}")
-            raise Exception()
-        # Check CNAME update result
-        elif isinstance(ResultUpdateCFCNAME, dict):
-            ResultUpdateResult = ResultUpdateCFCNAME.get("success")
-            if ResultUpdateResult == True:
-                Rt.Message("Successful update CNAME from Cloudflare.")
-                sleep(5)
-            elif ResultUpdateResult == False:
-                Tg.Message2Me(f"Cloudflare API Failed, {ResultUpdateCFCNAME.get('errors','error message is empty')}.")
-                raise Exception()
-            else:
-                Tg.Message2Me("Undefined error occurred during connect to Cloudflare API.")
-                raise Exception()
-        else:
-            Tg.Message2Me("Undefined error occurred during update CNAME.")
-            raise Exception()
-    # Wait DNS records update and active
-    sleep(30)
-    # Verify CNAME challenge
-    CertificateID = VerifyData.get("id","")
-    VerifyResult = Zs.ZeroSSLVerification(CertificateID, ValidationMethod="CNAME_CSR_HASH")
+    # Create validation file
+    for ValidationFile in ValidationFiles:
+        Rt.CreateValidationFile(ValidationFile)
+    # Wait for web server cahce
+    sleep(15)
+    # Verify file challenge
+    CertificateID = VerifyData.get("id")
+    VerifyResult = Zs.ZeroSSLVerification(CertificateID, ValidationMethod="HTTPS_CSR_HASH")
     # Function error
     if isinstance(VerifyResult, bool):
-        Tg.Message2Me("Error occurred during CNAME verification.")
+        Tg.Message2Me("Error occurred during file verification.")
         raise Exception()
     # ZeroSSL REST API HTTP error
     elif isinstance(VerifyResult, int):
-        Tg.Message2Me(f"Unable connect ZeroSSL API, HTTP Error: {VerifyResult}.")
+        Tg.Message2Me(f"Unable connect ZeroSSL API, HTTP Error: {VerifyResult}")
         raise Exception()
     # Possible errors respon
     elif isinstance(VerifyResult, dict) and ("error") in VerifyResult:
-        VerifyErrorStatus = VerifyResult.get("error",{}).get("type","Unknown Error")
-        Rt.Message(f"Error occurred during CNAME verification: {VerifyErrorStatus}")
-        raise Exception (VerifyErrorStatus)
+        VerifyErrorStatus = VerifyResult.get("error",{})
+        ErrorType = VerifyErrorStatus.get("type", "Unknown Error")
+        Rt.Message(f"Error occurred during file verification: {ErrorType}")
+        raise Exception (ErrorType)
     # Check verify status
     elif isinstance(VerifyResult, dict) and ("status") in VerifyResult:
         VerifyStatus = VerifyResult.get("status")
@@ -99,16 +76,19 @@ def main():
             Rt.Message("Not verified yet.")
             raise Exception()
         elif VerifyStatus == ("pending_validation"):
-            Rt.Message("CNAME verify successful, wait certificate issued.")
+            Rt.Message("HTTPS file verify successful, wait certificate issued.")
             sleep(30)
         # Verify successful and been issued
         elif VerifyStatus == ("issued"):
-            Rt.Message("CNAME verify successful, certificate been issued.")
+            Rt.Message("HTTPS file verify successful, certificate been issued.")
             sleep(5)
         # Undefined error
         else:
             Rt.Message(f"Unable to check verify status, currently status: {VerifyStatus}")
             raise Exception()
+    # Delete validation file
+    for ValidationFile in ValidationFiles:
+        Rt.CleanValidationFile(ValidationFile)
     # Download certificates
     CertificateContent = Zs.ZeroSSLDownloadCA(CertificateID)
     if isinstance(CertificateContent, bool):

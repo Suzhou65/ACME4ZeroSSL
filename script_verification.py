@@ -4,6 +4,8 @@ from sys import exit
 
 # Config
 ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
+# Validation Method
+ValidationMethod = "CNAME_CSR_HASH"
 
 # Script
 def main():
@@ -13,7 +15,7 @@ def main():
     Rt.Message("Manual verify start. Certificate hash reference from cache file by default.")
     CertificateID = input("Please input certificate ID (hash), or press ENTER using cache file: ")
     # Verification
-    Status = Zs.ZeroSSLVerification(CertificateID or None)
+    Status = Zs.ZeroSSLVerification(CertificateID or None, ValidationMethod)
     # Check
     if isinstance(Status, bool):
         Rt.Message("Error occurred during verification.")
@@ -21,17 +23,16 @@ def main():
     elif isinstance(Status, int):
         Rt.Message(f"Unable connect ZeroSSL API, HTTP Error: {Status}.")
         raise Exception()
-    # Possible errors respon
+    # Possible error respon
     elif isinstance(Status, dict) and ("error") in Status:
-        ErrorStatus = Status['error'] or {}
-        ErrorType = ErrorStatus.get("type", "Unknown Error")
-        Rt.Message(ErrorType)
+        ErrorStatus = Status.get("error",{}).get("type", "Unknown Error")
+        Rt.Message(ErrorStatus)
         raise Exception()
     elif isinstance(Status, dict) and ("status") in Status:
-        VerificationStatus = Status.get("status")
+        VerificationStatus = Status.get("status","")
         # Unverified
         if VerificationStatus == ("draft"):
-            Rt.Message("Not Verify yet.")
+            Rt.Message("Not verify yet.")
         # Verify successful
         elif VerificationStatus == ("pending_validation"):
             Rt.Message("Verify successful, please wait certificate issued.")
@@ -45,11 +46,10 @@ def main():
     else:
         Rt.Message(f"Unexpected Type/Format: {type(Status)} -> {Status}")
         raise Exception()
-
 # Runtime
 if __name__ == "__main__":
     try:
         main()
     except Exception:
         exit(0)
-# TESTPASS 25K24
+# QL 2025L14

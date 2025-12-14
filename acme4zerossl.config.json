@@ -17,7 +17,7 @@
    },
    "Certificate":{
       "Domains": ["www.example.com", "example.com"],
-      "Counrty": "",
+      "Country": "",
       "StateOrProvince": "",
       "Locality": "",
       "Organization": "",
