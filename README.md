@@ -15,6 +15,8 @@ Python script for renew certificate from ZeroSSL.
     + [Cloudflare API](#Cloudflare-api)
     + [ZeroSSL REST API](#zerossl-rest-api)
     + [Telegram BOTs](#telegram-bots)
+    + [Webpage Server Reload or Restart](#webpage-server-reload-or-restart)
+    + [Schedule](#schedule)
   * [Import module](#import-module)
   * [Function](#function)
     + [Verify Cloudflare API Token](#verify-cloudflare-api-token)
@@ -105,7 +107,6 @@ Configuration file must include following parameters:
 "CNAMERecordsID": ["XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"]
 ```
 
-
 > **ZeroSSL REST API Key**<br>
 > Storage `ZeroSSL Access Key` inside `ZeroSSLAPI`.<br>
 > Storage ZeroSSL certificate verify data as JSON file at `Cache`.<br>
@@ -185,6 +186,53 @@ Tg.GetChatID()
 Now ChatID will printout:
 ```
 2025-05-14 19:19:18 | You ChatID is: XXXXXXXXX
+```
+### Webpage Server Reload or Restart
+Function `CertificateInstall` support webpage server restart when certificate was downloaded (optional).<br>
+> **Command type**<br>
+> Adding command to `ServerCommand` with list object.<br>
+> Default is `None`, after download certificate will skip webpage server reload or restart.<br>
+```python
+# Function
+Rt.CertificateInstall(CertificateContent, ServerCommand)
+# Default is None
+ServerCommand  = None
+# Apache
+ServerCommand  = ['systemctl', 'reload', 'apache2']
+# Nginx
+ServerCommand  = ['service', 'nginx', 'restart']
+```
+
+### Schedule
+Recommend using `systemd`.<br>
+
+> **Systemd service file**<br>
+> Create service file `/etc/systemd/system/acme_cname.service`.<br>
+```conf
+[Unit]
+Description=ACME Script under CNAME mode
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /Documents/script/script_cname.py
+
+# ExecStart depend on your Python environment.
+# Path /Documents/script/script_cname.py is your acme script located.
+```
+> **Timer file**<br>
+> Next is timer file `/etc/systemd/system/acme_cname.timer`.<br>
+> Following example running everyday 5:00 AM and 10 minutes after boot up.
+```conf
+[Unit]
+Description=Run ACME Script everyday
+
+[Timer]
+OnBootSec=10min
+OnCalendar=*-*-* 05:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
 ```
 
 ## Import module
@@ -346,14 +394,6 @@ if __name__ == "__main__":
     except Exception:
         exit(0)
 ```
-> **Support webpage server restart (optional)**<br>
-> Adding command to `ServerCommand` with list object.<br>
-```python
-# Apache
-ServerCommand  = ['systemctl', 'reload', 'apache2']
-# Nginx
-ServerCommand  = ['service', 'nginx', 'restart']
-```
 
 ### Verify with HTTPS file challenge
 > **Demonstration script**<br>
@@ -484,25 +524,20 @@ ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
 def main():
     Rt = acme.Runtime(ConfigFilePath)
     Zs = acme.ZeroSSL(ConfigFilePath)
-    # Print prompt
-    Rt.Message("Certificate manual download script start. Download certificate hash reference from cache file by default.")
     # Input certificate hash manually
     CertificateID = input("Please input certificate ID (hash), or press ENTER using cache file: ")
     # Download certificate payload
     CertificateContent = Zs.ZeroSSLDownloadCA(CertificateID or None)
     # Check
     if isinstance(CertificateContent, bool):
-        Rt.Message("Error occurred during certificates download.")
         raise Exception()
     elif isinstance(CertificateContent, str):
-        Rt.Message(f"Error occurred during download certificate. Error status: {CertificateContent}")
         raise Exception()
     # Download certificate and save to folder
     elif isinstance(CertificateContent, dict) and ("certificate.crt") in CertificateContent:
-        Rt.Message(f"Downloading certificate...")
+        pass
     ResultCheck = Rt.CertificateInstall(CertificateContent)
     if isinstance(ResultCheck, bool):
-        Rt.Message("Error occurred during certificate saving.")
         raise Exception()
     elif isinstance(ResultCheck, int):
         Rt.Message("Certificate been downloaded to folder. You may need to restart server manually.")
@@ -538,10 +573,9 @@ def main():
     CancelStatus = Zs.ZeroSSLCancelCA(CertificateID)
     # Status check, Error
     if isinstance(CancelStatus, bool):
-        Rt.Message("Error occurred during cancel.")
+        raise Exception()
     # ZeroSSL REST API HTTP error
     elif isinstance(CancelStatus, int):
-        Rt.Message(f"Unable connect ZeroSSL API, HTTP error code: {CancelStatus}.")
         raise Exception()
     # Standard response, check status code
     elif isinstance(CancelStatus, dict):
@@ -551,10 +585,8 @@ def main():
         elif CancelResult == 0:
             Rt.Message("ZeroSSL REST API request successful, however unable cancel certificate.")
         else:
-            Rt.Message(f"Undefined status: {CancelResult}")
             raise Exception()
     else:
-        Rt.Message("Error occurred during cancel certificate.")
         raise Exception()
 # Runtime
 if __name__ == "__main__":
@@ -587,9 +619,8 @@ def main():
     RevokeStatus = Revoke.ZeroSSLRevokeCA(CertificateID)
     # Status check
     if isinstance(RevokeStatus, bool):
-        Rt.Message("Error occurred during revoke.")
+        raise Exception()
     elif isinstance(RevokeStatus, int):
-        Rt.Message(f"Unable connect ZeroSSL API, HTTP error code: {RevokeStatus}.")
         raise Exception()
     elif isinstance(RevokeStatus, dict) and ("success") in RevokeStatus:
         RevokeResult = RevokeStatus.get("success","")
@@ -598,10 +629,8 @@ def main():
         elif RevokeResult == 0:
             Rt.Message("ZeroSSL REST API request successful, however unable revoke certificate.")
         else:
-            Rt.Message(f"Undefined status: {RevokeResult}")
             raise Exception()
     else:
-        Rt.Message("Error occurred during revoke certificate.")
         raise Exception()
 # Runtime
 if __name__ == "__main__":

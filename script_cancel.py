@@ -16,6 +16,7 @@ def main():
     # Status check, Error
     if isinstance(CancelStatus, bool):
         Rt.Message("Error occurred during cancel.")
+        raise Exception()
     # ZeroSSL REST API HTTP error
     elif isinstance(CancelStatus, int):
         Rt.Message(f"Unable connect ZeroSSL API, HTTP error code: {CancelStatus}.")

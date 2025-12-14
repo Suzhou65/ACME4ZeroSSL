@@ -16,6 +16,7 @@ def main():
     # Status check
     if isinstance(RevokeStatus, bool):
         Rt.Message("Error occurred during revoke.")
+        raise Exception()
     elif isinstance(RevokeStatus, int):
         Rt.Message(f"Unable connect ZeroSSL API, HTTP error code: {RevokeStatus}.")
         raise Exception()
