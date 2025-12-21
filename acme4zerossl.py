@@ -26,14 +26,23 @@ class API():
 class Configuration():
     def __init__(self, ConfigFilePath):
         try:
-            ConfigInput = Path(ConfigFilePath)
-            with ConfigInput.open("r", encoding = "utf-8") as ConfigFile:
-                ConfigData = json.load(ConfigFile)
-                self.Load = ConfigData
+            # Script config path
+            ConfigPath = Path(ConfigFilePath)
+            # Local path
+            ConfigFolder = Path(__file__).resolve().parent
+            ConfigLocal = ConfigFolder / ConfigPath.name
+            try:
+                with ConfigPath.open("r", encoding = "utf-8") as ConfigContent:
+                    self.Load = json.load(ConfigContent)
+            # Try to find configuration file at local folder
+            except FileNotFoundError:
+                with ConfigLocal.open("r", encoding = "utf-8") as ConfigContent:
+                    self.Load = json.load(ConfigContent)
         # Error
-        except Exception as ConfigurationError:
-            raise Exception(ConfigurationError)
-        # QC 2025K14
+        except Exception as ConfigError:
+            logging.exception(f"PATH={ConfigPath}| {ConfigLocal}| Error={ConfigError}")
+            raise
+        # QC 2025L19
 
 # Runtime package
 class Runtime():
@@ -103,90 +112,76 @@ class Runtime():
 
     # Certificate Signing Request
     def CSRConfig(self):
-        CSRTextbook = [
-            "[req]",
-            "default_bits = 2048",
-            "prompt = no",
-            "encrypt_key = no",
-            "default_md = sha256",
-            "utf8 = yes",
-            "string_mask = utf8only",
-            "req_extensions = x509_v3_req",
-            "distinguished_name = req_distinguished_name",
-            "[x509_v3_req]",
-            "subjectAltName = @alt_names",
-            "[alt_names]",
-            f"DNS.1 = {self.CommonName}",
-            "[req_distinguished_name]",
-            f"countryName = {self.Country}",
-            f"stateOrProvinceName = {self.State}",
-            f"localityName = {self.Locality}",
-            f"organizationName = {self.Organization}",
-            f"organizationalUnitName = {self.Unit}",
-            f"commonName = {self.CommonName}"]
-        return CSRTextbook
-        # QC 2025L09 Mod
+        try:
+            # Setting empty alt names
+            AltNames1 = f"DNS.1 = {self.CommonName}"
+            AltNames2 = f"DNS.2 = {self.AltName}" if isinstance(self.AltName,str) and self.AltName.strip() else ""
+            DNconfig  = f"commonName = {self.CommonName}"
+            # Certificate Signing Request contents
+            CSRConfigContents = [
+                # Basic Config
+                "[req]",
+                "default_bits = 2048",
+                "prompt = no",
+                "encrypt_key = no",
+                "default_md = sha256",
+                "utf8 = yes",
+                "string_mask = utf8only",
+                # X509 Basic Constraints
+                "req_extensions = x509_v3_req",
+                "distinguished_name = req_distinguished_name",
+                "[x509_v3_req]",
 
-    # Certificate Signing Request
-    def CSRConfigMulti(self):
-        CSRTextbook = [
-            "[req]",
-            "default_bits = 2048",
-            "prompt = no",
-            "encrypt_key = no",
-            "default_md = sha256",
-            "utf8 = yes",
-            "string_mask = utf8only",
-            "req_extensions = x509_v3_req",
-            "distinguished_name = req_distinguished_name",
-            "[x509_v3_req]",
-            "subjectAltName = @alt_names",
-            "[alt_names]",
-            f"DNS.1 = {self.CommonName}",
-            f"DNS.2 = {self.AltName}",
-            "[req_distinguished_name]",
-            f"countryName = {self.Country}",
-            f"stateOrProvinceName = {self.State}",
-            f"localityName = {self.Locality}",
-            f"organizationName = {self.Organization}",
-            f"organizationalUnitName = {self.Unit}",
-            f"commonName = {self.CommonName}"]
-        return CSRTextbook
-        # QC 2025L09 Mod
+                "subjectAltName = @alt_names",
+                "[alt_names]",
+                AltNames1, AltNames2,
+                # Distinguished
+                "[req_distinguished_name]",
+                f"countryName = {self.Country}",
+                f"stateOrProvinceName = {self.State}",
+                f"localityName = {self.Locality}",
+                f"organizationName = {self.Organization}",
+                f"organizationalUnitName = {self.Unit}",
+                DNconfig]
+            return CSRConfigContents
+        except Exception as CSRGenError:
+            logging.exception(CSRGenError)
+            return False
+        # QC 2025L15 Mod
 
     # Create certificates signing request and PK
     def CreateCSR(self):
-        # Multiple domains, ex: www.example.com & example.com
-        if len(self.DomainList) > 1 and self.DomainList[1]:
-            CSRTexts = self.CSRConfigMulti()
-        # Single domains, ex: www.example.com
-        else:
-            CSRTexts = self.CSRConfig()
-        # CSR Config path
-        CSRConfigPath = Path(self.CSRConfigFile)
-        with CSRConfigPath.open("w") as CSRSignConfig:
-            for CSRText in CSRTexts:
-                CSRSignConfig.write(CSRText + "\n")
-        # OpenSSL generate command
-        OpensslCommand = ["openssl", "req", "-new",
-                          "-keyout", f"{self.PendingPK}", "-out", f"{self.CSROutput}",
-                          "-config", f"{self.CSRConfigFile}"]
-        # Run command
+        CSRConfigContents = self.CSRConfig()
+        if not isinstance(CSRConfigContents, list) or not CSRConfigContents:
+            return False
         try:
+            # Path check
+            CSRConfigPath = Path(self.CSRConfigFile)
+            CSRConfigPath.parent.mkdir(parents=True, exist_ok=True)
+            Path(self.PendingPK).parent.mkdir(parents=True, exist_ok=True)
+            Path(self.CSROutput).parent.mkdir(parents=True, exist_ok=True)
+            with CSRConfigPath.open("w") as CSRSignConfig:
+                # Drop empty alt names
+                for CSRConfigLine in filter(None, CSRConfigContents):
+                    CSRSignConfig.write(CSRConfigLine + "\n")
+            # OpenSSL generate command
+            OpensslCommand = ["openssl", "req", "-new", "-nodes", "-newkey", "rsa:2048",
+                              "-keyout", f"{self.PendingPK}", "-out", f"{self.CSROutput}",
+                              "-config", f"{self.CSRConfigFile}"]
             # Using OpenSSL generate CSR and PK
-            CsrStatus = subprocess.Popen(
-                OpensslCommand, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            CsrStatus = subprocess.Popen(OpensslCommand, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             # Discard openssl command output
             stdout, stderr = CsrStatus.communicate()
             # Check openssl command successful
             if CsrStatus.returncode == 0:
                 return 200
             elif CsrStatus.returncode != 0:
+                logging.error(f"{CsrStatus.returncode}| {stderr}")
                 return False
         except Exception as CreateCSRError:
             logging.exception(CreateCSRError)
             return False
-        # QC 2025L09 Mod
+        # QC 2025L15 Mod
 
     # Create and write ACME Challenge file
     def CreateValidationFile(self, VerifyRequestFile):
@@ -267,8 +262,7 @@ class Runtime():
             sleep(5)
             # Server reload or restart option
             if ServerCommand is not None:
-                ServerStatus = subprocess.Popen(
-                    ServerCommand, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                ServerStatus = subprocess.Popen(ServerCommand, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 # Discard output
                 stdout, stderr = ServerStatus.communicate()
                 # Check if reboot command successful
@@ -276,6 +270,7 @@ class Runtime():
                     return ServerCommand
                 # Restart or reload fail
                 elif ServerStatus.returncode != 0:
+                    logging.error(f"{ServerStatus.returncode}| {stderr}")
                     return False
             elif ServerCommand is None:
                 return 200

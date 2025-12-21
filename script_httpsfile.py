@@ -16,7 +16,7 @@ def main():
     ResultCreateCSR = Rt.CreateCSR()
     if isinstance(ResultCreateCSR, bool):
         Tg.Message2Me("Error occurred during Create CSR and Private key.")
-        raise Exception()
+        raise
     elif isinstance(ResultCreateCSR, int):
         Rt.Message("Successful create CSR and Private key.")
     # Sending CSR
@@ -24,18 +24,18 @@ def main():
     # Function error
     if isinstance(VerifyRequest, bool):
         Tg.Message2Me("Error occurred during request new certificate.")
-        raise Exception()
+        raise
     # ZeroSSL REST API HTTP error
     elif isinstance(VerifyRequest, int):
         Tg.Message2Me(f"Unable connect ZeroSSL API, HTTP Error: {VerifyRequest}")
-        raise Exception()
+        raise
     # Phrasing ZeroSSL verify
     elif isinstance(VerifyRequest, dict):
         VerifyData = Zs.ZeroSSLVerifyData(VerifyRequest, Mode="FILE")
     # Check verify data
     if isinstance(VerifyData, bool):
         Rt.Message(f"Error occurred during phrasing ZeroSSL verify data.")
-        raise Exception()
+        raise
     elif isinstance(VerifyData, dict):
         Rt.Message(f"ZeroSSL API request successful, certificate hash: {VerifyData.get('id')}")
     # Validation file path and content
@@ -57,11 +57,11 @@ def main():
     # Function error
     if isinstance(VerifyResult, bool):
         Tg.Message2Me("Error occurred during file verification.")
-        raise Exception()
+        raise
     # ZeroSSL REST API HTTP error
     elif isinstance(VerifyResult, int):
         Tg.Message2Me(f"Unable connect ZeroSSL API, HTTP Error: {VerifyResult}")
-        raise Exception()
+        raise
     # Possible errors respon
     elif isinstance(VerifyResult, dict) and ("error") in VerifyResult:
         VerifyErrorStatus = VerifyResult.get("error",{})
@@ -74,7 +74,7 @@ def main():
         # Verify successful, wait issued
         if VerifyStatus == ("draft"):
             Rt.Message("Not verified yet.")
-            raise Exception()
+            raise
         elif VerifyStatus == ("pending_validation"):
             Rt.Message("HTTPS file verify successful, wait certificate issued.")
             sleep(30)
@@ -85,7 +85,7 @@ def main():
         # Undefined error
         else:
             Rt.Message(f"Unable to check verify status, currently status: {VerifyStatus}")
-            raise Exception()
+            raise
     # Delete validation file
     for ValidationFile in ValidationFiles:
         Rt.CleanValidationFile(ValidationFile)
@@ -93,7 +93,7 @@ def main():
     CertificateContent = Zs.ZeroSSLDownloadCA(CertificateID)
     if isinstance(CertificateContent, bool):
         Tg.Message2Me("Error occurred during certificates download.")
-        raise Exception()
+        raise
     elif isinstance(CertificateContent, str):
         Tg.Message2Me(f"Error occurred during download certificate. {CertificateContent}")
         raise Exception(CertificateContent)
@@ -105,7 +105,7 @@ def main():
     ExpiresDate = VerifyResult.get("expires")
     if isinstance(ResultCheck, bool):
         Tg.Message2Me("Error occurred during certificate install. You may need to download and install manually.")
-        raise Exception()
+        raise
     elif isinstance(ResultCheck, int):
         Tg.Message2Me(f"Certificate been renewed, will expires in {ExpiresDate}. You may need to restart server manually.")
     elif isinstance(ResultCheck, (list,str)):
@@ -118,10 +118,17 @@ if __name__ == "__main__":
         Rt = acme.Runtime(ConfigFilePath)
         # Minimum is 14 days
         CertificateMinimum = Rt.ExpiresCheck()
+        # Renew determination
         if isinstance(CertificateMinimum, bool):
-            main()
+            RenewResult = main()
+            # Systemd check
+            if isinstance(RenewResult, bool):
+                exit(1)
+            else:
+                exit(0)
         elif isinstance(CertificateMinimum, int):
             Rt.Message(f"Certificate's validity date has {CertificateMinimum} days left.")
+            exit(0)
     except Exception:
-        exit(0)
+        exit(1)
 # UNQC

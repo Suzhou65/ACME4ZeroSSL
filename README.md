@@ -196,28 +196,32 @@ Function `CertificateInstall` support webpage server restart when certificate wa
 # Function
 Rt.CertificateInstall(CertificateContent, ServerCommand)
 # Default is None
-ServerCommand  = None
+ServerCommand = None
 # Apache
-ServerCommand  = ['systemctl', 'reload', 'apache2']
+ServerCommand = ['systemctl', 'reload', 'apache2']
 # Nginx
-ServerCommand  = ['service', 'nginx', 'restart']
+ServerCommand = ['service', 'nginx', 'restart']
 ```
 
 ### Schedule
 Recommend using `systemd`.<br>
+> **systemd service file**<br>
+> Create service file `/etc/systemd/system/acme_cname.service` for systemd.<br>
 
-> **Systemd service file**<br>
-> Create service file `/etc/systemd/system/acme_cname.service`.<br>
+> WorkingDirectory `/Documents/script` prevent absolute/relative path issue.<br>
+> ExecStart `/usr/bin/python3` depend on Python environment.<br>
+> Path `/Documents/script/script_cname.py` is acme script located.<br>
 ```conf
 [Unit]
 Description=ACME Script under CNAME mode
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=oneshot
+User=root
+WorkingDirectory=/Documents/script
 ExecStart=/usr/bin/python3 /Documents/script/script_cname.py
-
-# ExecStart depend on your Python environment.
-# Path /Documents/script/script_cname.py is your acme script located.
 ```
 > **Timer file**<br>
 > Next is timer file `/etc/systemd/system/acme_cname.timer`.<br>
@@ -227,12 +231,21 @@ ExecStart=/usr/bin/python3 /Documents/script/script_cname.py
 Description=Run ACME Script everyday
 
 [Timer]
-OnBootSec=10min
 OnCalendar=*-*-* 05:00:00
 Persistent=true
 
 [Install]
 WantedBy=timers.target
+```
+> **Enable service**<br>
+> Enable timer and clean cache.<br>
+```bash
+# Enable and start the timer
+systemctl enable acme_cname.timer
+systemctl start acme_cname.timer
+
+# Reload
+systemctl daemon-reload
 ```
 
 ## Import module
@@ -387,12 +400,12 @@ def main():
         pass
     else:
         raise Exception ()
-# Runtime, including check validity date of certificate
-if __name__ == "__main__":
-    try:
-        main()
-    except Exception:
-        exit(0)
+# Runtime
+try:
+    main()
+    exit(0)
+except Exception:
+    exit(1)
 ```
 
 ### Verify with HTTPS file challenge
@@ -494,21 +507,15 @@ def main():
     elif isinstance(ResultCheck, int):
         pass
     elif isinstance(ResultCheck, (list,str)):
-        pss
+        pass
     else:
         raise Exception ()
-# Runtime, including check validity date of certificate
-if __name__ == "__main__":
-    try:
-        Rt = acme.Runtime(ConfigFilePath)
-        # Minimum is 14 days
-        CertificateMinimum = Rt.ExpiresCheck()
-        if isinstance(CertificateMinimum, bool):
-            main()
-        elif isinstance(CertificateMinimum, int):
-            Rt.Message(f"Certificate's validity date has {CertificateMinimum} days left.")
-    except Exception:
-        exit(0)
+# Runtime
+try:
+    main()
+    exit(0)
+except Exception:
+    exit(1)
 ```
 
 ### Download certificate
@@ -521,7 +528,7 @@ from sys import exit
 # Config
 ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
 # Script
-def main():
+def DownloadScript():
     Rt = acme.Runtime(ConfigFilePath)
     Zs = acme.ZeroSSL(ConfigFilePath)
     # Input certificate hash manually
@@ -544,11 +551,11 @@ def main():
     elif isinstance(ResultCheck, (list,str)):
         Rt.Message(f"Certificate been downloaded and server has reload or restart.")
 # Runtime
-if __name__ == "__main__":
-    try:
-        main()
-    except Exception:
-        exit(1)
+try:
+    DownloadScript()
+    exit(0)
+except Exception:
+    exit(1)
 ```
 
 ### Cancel certificate<br>
@@ -564,7 +571,7 @@ from sys import exit
 # Config
 ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
 # Script
-def main():
+def CancelScript():
     Rt = acme.Runtime(ConfigFilePath)
     Zs = acme.ZeroSSL(ConfigFilePath)
     # Input certificate hash manually
@@ -589,11 +596,11 @@ def main():
     else:
         raise Exception()
 # Runtime
-if __name__ == "__main__":
-    try:
-        main()
-    except Exception:
-        exit(1)
+try:
+    CancelScript()
+    exit(0)
+except Exception:
+    exit(1)
 ```
 
 ### Revoke certificate
@@ -610,7 +617,7 @@ from sys import exit
 # Config
 ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
 # Script
-def main():
+def RevokeScript():
     Rt = acme.Runtime(ConfigFilePath)
     Revoke = acme.ZeroSSL(ConfigFilePath)
     # Input certificate hash manually
@@ -633,11 +640,11 @@ def main():
     else:
         raise Exception()
 # Runtime
-if __name__ == "__main__":
-    try:
-        main()
-    except Exception:
-        exit(1)
+try:
+    RevokeScript()
+    exit(0)
+except Exception:
+    exit(1)
 ```
 
 ## Dependencies
