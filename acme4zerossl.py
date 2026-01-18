@@ -7,15 +7,10 @@ import textwrap
 import requests
 import subprocess
 from time import sleep
-
 # Error handling
 FORMAT = "%(asctime)s |%(levelname)s |%(message)s"
-logging.basicConfig(
-    level=logging.WARNING,
-    filename="error.acme4zerossl.log", filemode="a", format=FORMAT)
-# TESTPASS 25J08
+logging.basicConfig(level=logging.WARNING, filename="error.acme4zerossl.log", filemode="a", format=FORMAT)
 
-# URL reference
 class API():
     def __init__(self):
         self.Cloudflare = "https://api.cloudflare.com/client/v4/"
@@ -27,22 +22,22 @@ class Configuration():
     def __init__(self, ConfigFilePath):
         try:
             # Script config path
-            ConfigPath = Path(ConfigFilePath)
+            ConfigPathInput = Path(ConfigFilePath)
             # Local path
-            ConfigFolder = Path(__file__).resolve().parent
-            ConfigLocal = ConfigFolder / ConfigPath.name
+            LocFolderPath = Path(__file__).resolve().parent
+            LocConfig = LocFolderPath / ConfigPathInput.name
             try:
-                with ConfigPath.open("r", encoding = "utf-8") as ConfigContent:
+                with ConfigPathInput.open("r", encoding = "utf-8") as ConfigContent:
                     self.Load = json.load(ConfigContent)
             # Try to find configuration file at local folder
             except FileNotFoundError:
-                with ConfigLocal.open("r", encoding = "utf-8") as ConfigContent:
+                with LocConfig.open("r", encoding = "utf-8") as ConfigContent:
                     self.Load = json.load(ConfigContent)
         # Error
-        except Exception as ConfigError:
-            logging.exception(f"PATH={ConfigPath}| {ConfigLocal}| Error={ConfigError}")
+        except Exception as ReadConfigError:
+            logging.exception(f"Unable reading configuration |Error: {ReadConfigError} |{ConfigPathInput} |{LocConfig}")
             raise
-        # QC 2025L19
+        # QC 2026A16
 
 # Runtime package
 class Runtime():
@@ -73,15 +68,17 @@ class Runtime():
 
     # Print runtime info
     def Message(self, MessageText):
-        EventTime = datetime.datetime.now()
-        TextPrintTime = EventTime.strftime("%H:%M:%S")
-        TextPrefix = (f"{TextPrintTime} | ")
-        UsableWidth = self.MessageWidth - len(TextPrefix)
-        SequentIndent = " " * len(TextPrefix)
-        Wrapping = textwrap.fill(MessageText, width=UsableWidth, subsequent_indent=SequentIndent)
-        print(TextPrefix + Wrapping)
+        try:
+            EventTime = datetime.datetime.now()
+            TextPrintTime = EventTime.strftime("%H:%M:%S")
+            TextPrefix = (f"{TextPrintTime} | ")
+            UsableWidth = self.MessageWidth - len(TextPrefix)
+            SequentIndent = " " * len(TextPrefix)
+            Wrapping = textwrap.fill(MessageText, width=UsableWidth, subsequent_indent=SequentIndent)
+            print(TextPrefix + Wrapping)
+        except Exception as RuntimeMessagePrintError:
+            logging.exception(f"Unable printout runtime |{RuntimeMessagePrintError}")
         # QC 2025K21
-
     # Check certificate expires, default minimum is 14 days
     def ExpiresCheck(self, Minimum = (14)):
         # Load config for cache path
@@ -92,7 +89,7 @@ class Runtime():
                 CacheData = json.load(CacheCheck)
         # Cache file not found, means first time running ACME4SSL
         except FileNotFoundError:
-            return False
+            return None
         # Get expires
         try:
             ExpiresTime = datetime.datetime.strptime(CacheData.get("expires",""), "%Y-%m-%d %H:%M:%S")
@@ -103,19 +100,20 @@ class Runtime():
                 return TimeDiff.days
             # Below minimum
             elif TimeDiff.days <= Minimum:
-                return False
+                return None
         # Calculate error, force renewed
-        except Exception as CalculateError:
-            logging.exception(CalculateError)
-            return False
-        # QC 2025L14
-
+        except Exception as ExpiresCheckError:
+            logging.exception(f"Unable check certificate expires, force renewed |Error: {ExpiresCheckError}")
+            return None
+        # QC 2026A16
     # Certificate Signing Request
     def CSRConfig(self):
         try:
-            # Setting empty alt names
+            # Get main alternative names
             AltNames1 = f"DNS.1 = {self.CommonName}"
+            # Setting second alternative names
             AltNames2 = f"DNS.2 = {self.AltName}" if isinstance(self.AltName,str) and self.AltName.strip() else ""
+            # Certificate common name, same as main alternative names
             DNconfig  = f"commonName = {self.CommonName}"
             # Certificate Signing Request contents
             CSRConfigContents = [
@@ -131,7 +129,6 @@ class Runtime():
                 "req_extensions = x509_v3_req",
                 "distinguished_name = req_distinguished_name",
                 "[x509_v3_req]",
-
                 "subjectAltName = @alt_names",
                 "[alt_names]",
                 AltNames1, AltNames2,
@@ -144,17 +141,17 @@ class Runtime():
                 f"organizationalUnitName = {self.Unit}",
                 DNconfig]
             return CSRConfigContents
-        except Exception as CSRGenError:
-            logging.exception(CSRGenError)
+        except Exception as CSRConfigError:
+            logging.exception(f"Error occurred during phrasing CSR config |Error: {CSRConfigError}")
             return False
-        # QC 2025L15 Mod
-
+        # UNQC
     # Create certificates signing request and PK
     def CreateCSR(self):
-        CSRConfigContents = self.CSRConfig()
-        if not isinstance(CSRConfigContents, list) or not CSRConfigContents:
-            return False
         try:
+            CSRConfigContents = self.CSRConfig()
+            if not isinstance(CSRConfigContents, list):
+                logging.error(f"Unable create CSR file due to wrong CSR config")
+                return False
             # Path check
             CSRConfigPath = Path(self.CSRConfigFile)
             CSRConfigPath.parent.mkdir(parents=True, exist_ok=True)
@@ -174,15 +171,15 @@ class Runtime():
             stdout, stderr = CsrStatus.communicate()
             # Check openssl command successful
             if CsrStatus.returncode == 0:
-                return 200
-            elif CsrStatus.returncode != 0:
-                logging.error(f"{CsrStatus.returncode}| {stderr}")
+                return OpensslCommand
+            else:
+                # Logging stderr for debug
+                logging.error(f"Unable running OpenSSL command | Error: {CsrStatus.returncode} |{stdout} |{stderr}")
                 return False
         except Exception as CreateCSRError:
-            logging.exception(CreateCSRError)
+            logging.exception(f"Error occurred during create CSR file |Error: {CreateCSRError}")
             return False
-        # QC 2025L15 Mod
-
+        # UNQC
     # Create and write ACME Challenge file
     def CreateValidationFile(self, VerifyRequestFile):
         try:
@@ -190,8 +187,8 @@ class Runtime():
             ValidationFile = VerifyRequestFile.get("file")
             # Empty
             if not ValidationFile:
-                logging.warning("Empty Challenge file path.")
-                return
+                logging.warning("Unable create HTTP/HTTPS challenge file with empty path")
+                return False
             else:
                 ValidationFilePath = Path(ValidationFile)
                 FolderPath = Path(self.Fileverify)
@@ -213,11 +210,12 @@ class Runtime():
                 else:
                     ChallengeFile.write(str(ChallengeTexts) + "\n")
             # Challenge file create notice
-            self.Message(f"{FullFilePath} has been created.")
+            self.Message(f"HTTP/HTTPS challenge has been created at: {FullFilePath}")
+            return True
         except Exception as CreateValidationFileError:
-            logging.exception(CreateValidationFileError)
-        # QC 2025L14
-
+            logging.exception(f"Error occurred during create challenge file |Error: {CreateValidationFileError}")
+            return False
+        # UNQC
     # Delete ACME Challenge file after verify
     def CleanValidationFile(self, VerifyRequestFile):
         try:
@@ -238,11 +236,10 @@ class Runtime():
                 except FileNotFoundError:
                     pass
         except Exception as CleanValidationFileError:
-            logging.exception(CleanValidationFileError)
+            logging.exception(f"Error occurred during delete challenge file |Error: {CleanValidationFileError}")
         # QC 2025L14
-
     # Install certificate to server folder, reload is optional
-    def CertificateInstall(self, CertificateContent, ServerCommand = (None)):
+    def CertificateInstall(self, CertificateContent, ServerCommand = None):
         try:
             # Private key
             PKPending = Path(self.PendingPK)
@@ -269,13 +266,13 @@ class Runtime():
                 if ServerStatus.returncode == 0:
                     return ServerCommand
                 # Restart or reload fail
-                elif ServerStatus.returncode != 0:
-                    logging.error(f"{ServerStatus.returncode}| {stderr}")
+                else:
+                    logging.error(f"Unable running server reload/restart command |Error: {ServerStatus.returncode} |{stdout} |{stderr}")
                     return False
-            elif ServerCommand is None:
+            else:
                 return 200
-        except Exception as InstallCAError:
-            logging.exception(InstallCAError)
+        except Exception as CertificateInstallError:
+            logging.exception(f"Error occurred during install certificate or reload/restart server |Error: {CertificateInstallError}")
             return False
         # QC 2025K21
 
@@ -292,53 +289,45 @@ class Telegram():
 
     # Set default message for testing
     def Message2Me(self, TelegramMessage = ('Here, the world!')):
-        # Connetc URL
-        TgURL = (self.Com.Telegram + f"{self.BotToken}/sendMessage")
-        # Text content
-        TgText = (f"{self.Domainheader}\n" + TelegramMessage)
-        TgMsg = {"chat_id": f"{self.ChatID}", "text": TgText}
         try:
-            TgResponse = requests.post(TgURL, json=TgMsg, timeout=30)
-            if TgResponse.status_code == 200:
-                TgResponse.close()
-                self.RtM.Message(TelegramMessage)
-            elif TgResponse.status_code == 400:
-                TgResponse.close()
-                self.RtM.Message("Telegram ChatID is empty, notifications will not be sent.")
-                logging.error(TgResponse.status_code)
-            else:
-                TgResponse.close()
-                logging.warning(TgResponse.status_code)
-        except Exception as TelegramErrorStatus:
-            logging.exception(TelegramErrorStatus)
+            # Text content with domain name
+            TgText = (f"{self.Domainheader}\n" + TelegramMessage)
+            TgMsg = {"chat_id": f"{self.ChatID}", "text": TgText}
+            # Connetc URL
+            TgURL = (self.Com.Telegram + f"{self.BotToken}/sendMessage")
+            with requests.post(TgURL, json=TgMsg, timeout=30) as TgResponse:
+                if TgResponse.status_code == 200:
+                    self.RtM.Message(TelegramMessage)
+                elif TgResponse.status_code == 400:
+                    logging.warning(f"Telegram ChatID is empty, notifications will not be sent |{TgResponse.status_code}")
+                else:
+                    logging.warning(f"Unable sending notifications |HTTP Error: {TgResponse.status_code}")
+        except Exception as Message2MeError:
+            logging.exception(f"Error occurred during sending notifications |Error: {Message2MeError}")
         # QC 2025K23
-
     # Get Telegram ChatID
     def GetChatID(self):
-        # Connetc URL
-        TgAskURL = (self.Com.Telegram + f"{self.BotToken}/getUpdates")
         try:
-            TgAskResponse = requests.post(TgAskURL, timeout=30)
-            if TgAskResponse.status_code == 200:
-                TgAskData = json.loads(TgAskResponse.text)
-                TgAskResponse.close()
-                TgAskResult = TgAskData.get("result","")
-                # Empty result
-                if not TgAskResult:
-                    self.RtM.Message("You must send message to bot first.")
-                # Select ChatID
-                else:
-                    CheckChatList = TgAskData.get("result","")
+            TgAskURL = (self.Com.Telegram + f"{self.BotToken}/getUpdates")
+            with requests.post(TgAskURL, timeout=30) as TgAskResponse:
+                if TgAskResponse.status_code == 200:
+                    TgAskData = TgAskResponse.json()
+                    TgAskResult = TgAskData.get("result")
+                    # Empty result
+                    if not TgAskResult:
+                        self.RtM.Message("You must send message to bot first")
+                        return
+                    # Select ChatID
+                    CheckChatList = TgAskData.get("result")
                     CheckChatResult = CheckChatList[0]
-                    CheckChatID = CheckChatResult.get("message",{}).get("chat",{}).get("id","")
+                    CheckChatID = CheckChatResult.get("message",{}).get("chat",{}).get("id")
                     self.RtM.Message(f"You ChatID is: {CheckChatID}")
-            else:
-                TgAskResponse.close()
-                logging.warning(TgAskResponse.status_code)
-        except Exception as TelegramErrorStatus:
-            logging.exception(TelegramErrorStatus)
+                elif TgAskResponse.status_code != 200:
+                    logging.warning(f"Unable get ChatID |HTTP Error: {TgAskResponse.status_code}")
+        except Exception as GetChatIDError:
+            logging.exception(f"Error occurred during get ChatID |Error: {GetChatIDError}")
         # QC 2025L10 Mod
-        
+
 # Cloudflare API package
 class Cloudflare():
     def __init__(self, ConfigFilePath):
@@ -348,94 +337,94 @@ class Cloudflare():
         self.Zone     = self.CfConfig['CloudflareRecords']['ZoneID']
         self.Com = API()
         # Generate Cloudflare API request header
-        self.CFHeader = {"Authorization": f"Bearer {self.Token}",
-                         "X-Auth-Email": f"{self.Mail}",
-                         "Content-Type": "application/json"}
+        self.CFHeader = {"Authorization": f"Bearer {self.Token}", "X-Auth-Email": f"{self.Mail}", "Content-Type": "application/json"}
 
     # Verify Cloudflare API token
-    def VerifyCFToken(self, DisplayVerifyResult = (None)):
-        CfVerifyURL = (self.Com.Cloudflare + "user/tokens/verify")
+    def VerifyCFToken(self, DisplayVerifyResult = None):
         try:
-            TokenResponse = requests.get(CfVerifyURL, headers=self.CFHeader, timeout=30)
-            # Only return verify result
-            if TokenResponse.status_code == 200 and DisplayVerifyResult is None:
-                TokenVerifyData = json.loads(TokenResponse.text)
-                TokenResponse.close()
-                return TokenVerifyData.get("result",{}).get("status","")
-            # Return all
-            elif TokenResponse.status_code == 200 and DisplayVerifyResult is not None:
-                TokenVerifyData = json.loads(TokenResponse.text)
-                TokenResponse.close()
-                return TokenVerifyData
-            elif TokenResponse.status_code != 200:
-                TokenResponse.close()
-                logging.warning(TokenResponse.status_code)
-                return TokenResponse.status_code
-        except Exception as VerifyCFError:
-            logging.exception(VerifyCFError)
+            VerifyCFTokenURL = (self.Com.Cloudflare + "user/tokens/verify")
+            with requests.get(VerifyCFTokenURL, headers=self.CFHeader, timeout=30) as TokenVerifyResponse:
+                if TokenVerifyResponse.status_code == 200:
+                    TokenVerifyData = TokenVerifyResponse.json()
+                    # Check respon status
+                    VerifyCheckStatus = TokenVerifyData.get("success")
+                    # Error
+                    if VerifyCheckStatus == False:
+                        TokenVerifyError = TokenVerifyData.get("errors")
+                        logging.warning(f"Error occurred during update verify token |API error: {TokenVerifyError}")
+                        return False
+                    # Success
+                    if DisplayVerifyResult is None:
+                        return TokenVerifyData.get("result",{}).get("status")
+                    else:
+                        return TokenVerifyData
+                elif TokenVerifyResponse.status_code != 200:
+                    logging.warning(f"Unable connect Cloudflare API |HTTP Error: {TokenVerifyResponse.status_code}")
+                    return TokenVerifyResponse.status_code
+        except Exception as VerifyCFTokenError:
+            logging.exception(f"Error occurred during verify Cloudflare API token |Error: {VerifyCFTokenError}")
             return False
-        # QC 2025L10 Mod
-
+        # QC 2026A16
     # Download all DNS records from Cloudflare
-    def GetCFRecords(self, FileOutput = (None)):
-        GetRecords = (self.Com.Cloudflare + f"zones/{self.Zone}/dns_records")
+    def GetCFRecords(self, FileOutput = None):
         try:
-            RecordsRespon = requests.get(GetRecords, headers=self.CFHeader, timeout=30)
-            # Return records as dict
-            if RecordsRespon.status_code == 200 and FileOutput is None:
-                RecordsData = json.loads(RecordsRespon.text)
-                RecordsRespon.close()
-                return RecordsData
-            # Enable records file output
-            elif RecordsRespon.status_code == 200 and FileOutput is not None:
-                RecordsData = json.loads(RecordsRespon.text)
-                RecordsRespon.close()
-                RecordsOutputPath = Path(FileOutput)
-                with RecordsOutputPath.open("w") as RecordsFile:
-                    json.dump(RecordsData, RecordsFile, indent = 3)
-                return FileOutput
-            elif RecordsRespon.status_code != 200:
-                logging.warning(RecordsRespon.status_code)
-                RecordsRespon.close()
-                return RecordsRespon.status_code
+            GetCFRecordsURL = (self.Com.Cloudflare + f"zones/{self.Zone}/dns_records")
+            with requests.get(GetCFRecordsURL, headers=self.CFHeader, timeout=30) as RecordsRespon:
+                # Return records as dict
+                if RecordsRespon.status_code == 200:
+                    RecordsData = RecordsRespon.json()
+                    GetRecordsStatus = RecordsData.get("success")
+                    if GetRecordsStatus == False:
+                        GetRecordsError = RecordsData.get("errors")
+                        logging.warning(f"Error occurred during download DNS records |API error: {GetRecordsError}")
+                        return False
+                    # Enable records file output
+                    if FileOutput is not None:
+                        RecordsOutputPath = Path(FileOutput)
+                        with RecordsOutputPath.open("w") as RecordsFile:
+                            json.dump(RecordsData, RecordsFile, indent = 3)
+                        return FileOutput
+                    else:
+                        return RecordsData
+                elif RecordsRespon.status_code != 200:
+                    logging.warning(f"Unable connect Cloudflare API |HTTP Error: {RecordsRespon.status_code}")
+                    return RecordsRespon.status_code
         except Exception as GetCFRecordsError:
-            logging.exception(GetCFRecordsError)
+            logging.exception(f"Error occurred during download DNS records |Error: {GetCFRecordsError}")
             return False
-        # QC 2025K20
-
+        # UNQC
     # Update CNAME records at Cloudflare
     def UpdateCFCNAME(self, UpdatePayload):
         try:
             # Records ID
             RecordID = UpdatePayload.get("cname_id")
             if not RecordID:
-                logging.warning("Error during phrasing CNAME update payload, missing record ID.")
+                logging.warning(f"Error occurred during phrasing CNAME update payload |Record ID: {RecordID}")
                 return False
-            else:
-                UpdateCNAME = (self.Com.Cloudflare + f"zones/{self.Zone}/dns_records/{RecordID}")
+            UpdateCNAMEURL = (self.Com.Cloudflare + f"zones/{self.Zone}/dns_records/{RecordID}")
             # CNAME update payload
             CNAMEText = UpdatePayload.get("cname")
             CNAMEValue = UpdatePayload.get("value")
-            if CNAMEText and CNAMEValue:
-                UpdateCNAMEData = {
-                    "type":"CNAME", "name":CNAMEText, "content":CNAMEValue,
-                    "proxiable":False, "proxied":False, "ttl":1}
-                UpdateJSON = json.dumps(UpdateCNAMEData)
-            else:
-                logging.warning("Error during phrasing CNAME update payload, missing CNAME or Value.")
+            if not (CNAMEText and CNAMEValue):
+                logging.warning(f"Error occurred during phrasing CNAME update payload |CNAME: {CNAMEText} |Value: {CNAMEValue}")
                 return False
+            UpdateCNAMEData = {"type":"CNAME", "name":CNAMEText, "content":CNAMEValue, "proxiable":False, "proxied":False, "ttl":1}
+            UpdateJSON = json.dumps(UpdateCNAMEData)
             # Update
-            UpdateRespon = requests.put(UpdateCNAME, headers=self.CFHeader, data=UpdateJSON, timeout=30)
-            if UpdateRespon.status_code == 200:
-                UpdateResponData = json.loads(UpdateRespon.text)
-                UpdateRespon.close()
-                return UpdateResponData
-            elif UpdateRespon.status_code != 200:
-                logging.warning(UpdateRespon.status_code)
-                UpdateRespon.close()
-                return UpdateRespon.status_code
+            with requests.put(UpdateCNAMEURL, headers=self.CFHeader, data=UpdateJSON, timeout=30) as UpdateRespon:
+                if UpdateRespon.status_code == 200:
+                    UpdateResponData = UpdateRespon.json()
+                    UpdateResponCheck = UpdateResponData.get("success")
+                    if UpdateResponCheck == False:
+                        UpdateCNAMEError = UpdateResponData.get("errors")
+                        logging.warning(f"Error occurred during update CNAME record |API error: {UpdateCNAMEError}")
+                        return False
+                    return UpdateResponData
+                elif UpdateRespon.status_code != 200:
+                    logging.warning(f"Unable connect Cloudflare API |HTTP Error: {UpdateRespon.status_code}")
+                    return UpdateRespon.status_code
         except Exception as UpdateCNAMEError:
-            logging.exception(UpdateCNAMEError)
+            logging.exception(f"Error occurred during update CNAME record |Error: {UpdateCNAMEError}")
             return False
         # UNQC
 
@@ -456,6 +445,7 @@ class ZeroSSL():
         self.VALUE         = "cname_validation_p2"
         self.FILE          = "file_validation_url_https"
         self.CONTENT       = "file_validation_content"
+        self.Certificate   = "certificate.crt"
         # Cloudflare
         self.CNAMEList     = self.ZeroSSLConfig['CloudflareRecords']['CNAMERecordsID']
         self.CommonNameID  = self.CNAMEList[0] if self.CNAMEList else ""
@@ -476,39 +466,46 @@ class ZeroSSL():
         else:
             CertificateDomains = f"{self.DomainList[0]}"
         # Package as JSON
-        CreatePayload = {"certificate_domains":CertificateDomains,
-                         "certificate_validity_days":90,
-                         "certificate_csr":CSRPayload}
+        CreatePayload = {"certificate_domains":CertificateDomains, "certificate_validity_days":90, "certificate_csr":CSRPayload}
         CreateJSON = json.dumps(CreatePayload)
-        # Create URL
-        CreateCA = (self.Com.ZeroSSL + f"?access_key={self.ZeroSSLAuth}")
         try:
-            CreateRespon = requests.post(CreateCA, headers=self.ZeroSSLHeader, data=CreateJSON, timeout=30)
-            if CreateRespon.status_code == 200:
-                ResultData = json.loads(CreateRespon.text)
-                CreateRespon.close()
-                # Saving validation data
-                ValidationCacheFile = Path(self.Validation)
-                with ValidationCacheFile.open("w") as ValidationData:
-                    json.dump(ResultData, ValidationData, indent=4)
-                return ResultData
-            elif CreateRespon.status_code != 200:
-                CreateRespon.close()
-                logging.warning(CreateRespon.status_code)
-                return CreateRespon.status_code
+            CreateCA = (self.Com.ZeroSSL + f"?access_key={self.ZeroSSLAuth}")
+            with requests.post(CreateCA, headers=self.ZeroSSLHeader, data=CreateJSON, timeout=30) as CreateCARespon:
+                if CreateCARespon.status_code == 200:
+                    CreateCAData = CreateCARespon.json()
+                    # Possible errors respon
+                    CreateCAError = CreateCAData.get("success")
+                    if CreateCAError == False:
+                        CreateCAErrorStatus = CreateCAData.get("error",{}).get("type","Unknown error")
+                        logging.warning(f"Error occurred during request new certificate |API error: {CreateCAErrorStatus}")
+                        return False
+                    # Check certificate status
+                    VerifyStatus = CreateCAData.get("status", None)
+                    if VerifyStatus is not None:
+                        # Saving validation data
+                        ValidationCacheFile = Path(self.Validation)
+                        with ValidationCacheFile.open("w") as ValidationData:
+                            json.dump(CreateCAData, ValidationData, indent=4)
+                        return CreateCAData
+                    # Catch exception
+                    else:
+                        logging.warning(f"Unknown error occurred during request new certificate")
+                        return False
+                elif CreateCARespon.status_code != 200:
+                    logging.warning(f"Unable connect ZeroSSL API |HTTP Error: {CreateCARespon.status_code}")
+                    return CreateCARespon.status_code
         except Exception as ErrorStatus:
-            logging.exception(ErrorStatus)
+            logging.exception(f"Error occurred during request new certificate |Error: {ErrorStatus}")
             return False
-        # QC 2025L14
-
+        # UNQC
     # Phrasing ZeroSSL verify JSON
-    def ZeroSSLVerifyData(self, VerifyRequest, Mode = ('CNAME')):
+    def ZeroSSLVerifyData(self, VerifyRequest, ValidationMethod = ('CNAME_CSR_HASH')):
         try:
             # Additional domain check
             AdditionalDomainCheck = VerifyRequest.get(self.L1,{}).get(self.L2,{}).get(self.AltName)
             AdditionalCheck = bool(AdditionalDomainCheck)
             # Certificate ID
-            VerifyCertificateID = VerifyRequest.get("id","")
+            VerifyCertificateID = VerifyRequest.get("id", None)
             # Common Name CNAME
             CommonName_CNAME = VerifyRequest.get(self.L1,{}).get(self.L2,{}).get(self.CommonName,{}).get(self.CNAME,"")
             # Common Name VALUE
@@ -526,144 +523,154 @@ class ZeroSSL():
             # Additional_domains, file content
             Additional_CONTENT = VerifyRequest.get(self.L1,{}).get(self.L2,{}).get(self.AltName,{}).get(self.CONTENT,"")
             # CNAME mode
-            if Mode == ("CNAME") and not AdditionalCheck:
+            if ValidationMethod == ("CNAME_CSR_HASH") and not AdditionalCheck:
                 CreateCAVerify = {
                     "id": VerifyCertificateID,
                     "common_name": {"cname_id": self.CommonNameID, "cname": CommonName_CNAME,"value": CommonName_VALUE}}
                 # Retutn phrasing dict
                 return CreateCAVerify
             # CNAME mode, additional domain
-            elif Mode == ("CNAME") and AdditionalCheck:
+            elif ValidationMethod == ("CNAME_CSR_HASH") and AdditionalCheck:
                 CreateCAVerify = {
                     "id": VerifyCertificateID,
                     "common_name": {"cname_id": self.CommonNameID, "cname": CommonName_CNAME, "value": CommonName_VALUE},
                     "additional_domains":{"cname_id": self.AltNameID, "cname": Additional_CNAME, "value": Additional_VALUE}}
                 return CreateCAVerify
             # File mode
-            elif Mode == ("FILE") and not AdditionalCheck:
+            elif ValidationMethod == ("HTTPS_CSR_HASH") and not AdditionalCheck:
                 CreateCAVerify = {
                     "id": VerifyCertificateID,
                     "common_name": {"file":CommonName_FILE, "content": CommonName_CONTENT}}
                 return CreateCAVerify
             # File mode, additional domain
-            elif Mode == ("FILE") and AdditionalCheck:
+            elif ValidationMethod == ("HTTPS_CSR_HASH") and AdditionalCheck:
                 CreateCAVerify = {
                     "id": VerifyCertificateID,
                     "common_name": {"file":CommonName_FILE, "content": CommonName_CONTENT},
                     "additional_domains": {"file":Additional_FILE, "content": Additional_CONTENT}}
                 return CreateCAVerify
             else:
-                logging.warning(f"Unknown ZeroSSL validation mode: {Mode}")
+                logging.warning(f"Unable phrasing ZeroSSL verify data |Unknown validation mode: {ValidationMethod}")
                 return False
         # Error
         except Exception as VerifyDataPhrasingError:
-            logging.exception(VerifyDataPhrasingError)
+            logging.exception(f"Error occurred during phrasing ZeroSSL verify data |Error: {VerifyDataPhrasingError}")
             return False
-        # UNQC CNAME / QC 2025L14 FILE
-
+        # UNQC
     # Verification, when using CNAME and HTTP/HTTPS file verify
-    def ZeroSSLVerification(self, CertificateID = (None), ValidationMethod = ('CNAME_CSR_HASH')):
-        # Reading certificate hash from cache
-        if CertificateID is None:
-            CacheInput = Path(self.Validation)
-            with CacheInput.open("r", encoding = "utf-8") as CacheFile:
-                CacheData = json.load(CacheFile)
-            CertificateID = CacheData.get("id")
-        # Using input string
-        elif CertificateID is not None:
-            pass
-        # Verification URL and verification method, default is CNAME
-        Verification = (self.Com.ZeroSSL + f"/{CertificateID}/challenges?access_key={self.ZeroSSLAuth}")
-        VerifyMethodData = {"validation_method":ValidationMethod}
-        VerifyJSON = json.dumps(VerifyMethodData)
+    def ZeroSSLVerification(self, CertificateID = None, ValidationMethod = ('CNAME_CSR_HASH')):
         try:
-            VerificationRespon = requests.post(Verification, headers=self.ZeroSSLHeader, data=VerifyJSON, timeout=30)
-            if VerificationRespon.status_code == 200:
-                VerificationData = json.loads(VerificationRespon.text)
-                VerificationRespon.close()
-                return VerificationData
-            elif VerificationRespon.status_code != 200:
-                logging.warning(VerificationRespon.status_code)
-                VerificationRespon.close()
-                return VerificationRespon.status_code
+            # Reading certificate hash from cache
+            if CertificateID is None or not str(CertificateID).strip():
+                CacheInput = Path(self.Validation)
+                with CacheInput.open("r", encoding = "utf-8") as CacheFile:
+                    CacheData = json.load(CacheFile)
+                CertificateID = CacheData.get("id")
+            if not CertificateID:
+                logging.warning("Certificate ID is empty after cache fallback")
+                return False
+            # Verification URL and verification method, default is CNAME
+            VerificationURL = (self.Com.ZeroSSL + f"/{CertificateID}/challenges?access_key={self.ZeroSSLAuth}")
+            VerifyMethodData = {"validation_method": ValidationMethod}
+            VerifyJSON = json.dumps(VerifyMethodData)
+            with requests.post(VerificationURL, headers=self.ZeroSSLHeader, data=VerifyJSON, timeout=30) as VerificationRespon:
+                if VerificationRespon.status_code == 200:
+                    VerificationData = VerificationRespon.json()
+                    # Possible errors respon
+                    VerifyCheck = VerificationData.get("success")
+                    if VerifyCheck == False:
+                        VerifyErrorStatus = VerificationData.get("error",{}).get("type","Unknown error")
+                        logging.warning(f"Error occurred during verification |API error: {VerifyErrorStatus}")
+                        return False
+                    # Get certificate status
+                    VerifyStatus = VerificationData.get("status", False)
+                    return VerifyStatus
+                elif VerificationRespon.status_code != 200:
+                    logging.warning(f"Unable connect ZeroSSL API |HTTP Error: {VerificationRespon.status_code}")
+                    return VerificationRespon.status_code
         except Exception as CAVerificationError:
-            logging.exception(CAVerificationError)
+            logging.exception(f"Error occurred during verification |Error: {CAVerificationError}")
             return False
-        # QC 2025K24
-
+        # UNQC
     # Download certificate from ZeroSSL
-    def ZeroSSLDownloadCA(self, CertificateID = (None)):
-        # Reading certificate hash from cache
-        if CertificateID is None:
-            CacheInput = Path(self.Validation)
-            with CacheInput.open("r", encoding = "utf-8") as CacheFile:
-                CacheData = json.load(CacheFile)
-            CertificateID = CacheData.get("id","")
-        # Using input string
-        elif CertificateID is not None:
-            pass
-        # Download
-        DownloadCA = (self.Com.ZeroSSL + f"/{CertificateID}/download/return?access_key={self.ZeroSSLAuth}")
+    def ZeroSSLDownloadCA(self, CertificateID = None):
         try:
+            # Reading certificate hash from cache
+            if CertificateID is None or not str(CertificateID).strip():
+                CacheInput = Path(self.Validation)
+                with CacheInput.open("r", encoding = "utf-8") as CacheFile:
+                    CacheData = json.load(CacheFile)
+                CertificateID = CacheData.get("id")
+            if not CertificateID:
+                logging.warning("Certificate ID is empty after cache fallback")
+                return False
+            # Download
+            DownloadCertificateURL = (self.Com.ZeroSSL + f"/{CertificateID}/download/return?access_key={self.ZeroSSLAuth}")
             # ZeroSSL Inline download certificate need JSON header
-            DownloadRespon = requests.get(DownloadCA, headers=self.ZeroSSLHeader, timeout=30)
-            if DownloadRespon.status_code == 200:
-                CertificateJSON = json.loads(DownloadRespon.text)
-                DownloadRespon.close()
-                # Return certificate payload
-                if ("certificate.crt") in CertificateJSON:
-                    return CertificateJSON
-                # Retrun error status
-                elif ("certificate.crt") not in CertificateJSON:
-                    DownloadCAError = CertificateJSON.get("error",{}).get("type","")
-                    logging.error(DownloadCAError)
-                    return False
-            elif DownloadRespon.status_code != 200:
-                DownloadRespon.close()
-                logging.error(f"ZeroSSL REST API ERROR: {DownloadRespon.status_code}")
-                return DownloadRespon.status_code
+            with requests.get(DownloadCertificateURL, headers=self.ZeroSSLHeader, timeout=30) as DownloadRespon:
+                if DownloadRespon.status_code == 200:
+                    CertificatePayload = DownloadRespon.json()
+                    # Possible errors respon
+                    DownloadCheck = CertificatePayload.get("success")
+                    if DownloadCheck == False:
+                        DownloadErrorStatus = CertificatePayload.get("error",{}).get("type","Unknown error")
+                        logging.warning(f"Error occurred during download certificate |API error: {DownloadErrorStatus}")
+                        return False
+                    # Return certificate payload, inline mode check
+                    CertificateString = CertificatePayload.get(self.Certificate, None)
+                    if CertificateString is None:
+                        logging.warning(f"Certificate payload is empty during download certificate")
+                        return False
+                    return CertificatePayload
+                elif DownloadRespon.status_code != 200:
+                    logging.error(f"Unable connect ZeroSSL API |HTTP Error: {DownloadRespon.status_code}")
+                    return DownloadRespon.status_code
         except Exception as DownloadCAError:
-            logging.exception(DownloadCAError)
+            logging.exception(f"Error occurred during downloading |Error: {DownloadCAError}")
             return False
-        # QC 2025L10 Mod
-
+        # UNQC
     # Cancel certificate from ZeroSSL
     def ZeroSSLCancelCA(self, CertificateID):
-        CancelCA = (self.Com.ZeroSSL + f"/{CertificateID}/cancel?access_key={self.ZeroSSLAuth}")
         try:
-            CancelRespon = requests.post(CancelCA, headers=self.ZeroSSLHeader, timeout=30)
-            if CancelRespon.status_code == 200:
-                CancelJSON = json.loads(CancelRespon.text)
-                CancelRespon.close()
-                return CancelJSON
-            else:
-                CancelRespon.close()
-                return CancelRespon.status_code
+            CancelCAURL = (self.Com.ZeroSSL + f"/{CertificateID}/cancel?access_key={self.ZeroSSLAuth}")
+            with requests.post(CancelCAURL, headers=self.ZeroSSLHeader, timeout=30) as CancelRespon:
+                if CancelRespon.status_code == 200:
+                    CancelResponData = CancelRespon.json()
+                    CancelStatus = CancelResponData.get("success")
+                    if CancelStatus == False:
+                        CancelErrorStatus = CancelResponData.get("error",{}).get("type","Unknown error")
+                        logging.warning(f"Error occurred during cancel certificate |API error: {CancelErrorStatus}")
+                        return False
+                    return CancelResponData
+                elif CancelRespon.status_code != 200:
+                    logging.error(f"Unable connect ZeroSSL API |HTTP Error: {CancelRespon.status_code}")
+                    return CancelRespon.status_code
         except Exception as CancelCAError:
-            logging.exception(CancelCAError)
+            logging.exception(f"Error occurred during cancel certificate |Error:{CancelCAError}")
             return False
-        # QC 2025K22
-
+        # UNQC
     # Revoke certificate from ZeroSSL
-    def ZeroSSLRevokeCA(self, CertificateID, RevokeReason = (None)):
-        RevokeCA = (self.Com.ZeroSSL + f"/{CertificateID}/revoke?access_key={self.ZeroSSLAuth}")
-        # Unspecified revoke reason
-        if RevokeReason is None:
-            RevokeReason = ("Unspecified")
-        elif RevokeReason is not None:
-            pass
-        RevokeReasonData = {"reason":f"{RevokeReason}"}
-        RevokeReasonJSON = json.dumps(RevokeReasonData)
+    def ZeroSSLRevokeCA(self, CertificateID, RevokeReason = None):
         try:
-            RevokeRespon = requests.post(RevokeCA, headers=self.ZeroSSLHeader, data=RevokeReasonJSON ,timeout=30)
-            if RevokeRespon.status_code == 200:
-                RevokeJSON = json.loads(RevokeRespon.text)
-                RevokeRespon.close()
-                return RevokeJSON
-            else:
-                RevokeRespon.close()
-                return RevokeRespon.status_code
+            # Unspecified revoke reason
+            if RevokeReason is None:
+                RevokeReason = ("Unspecified")
+            RevokeReasonData = {"reason":f"{RevokeReason}"}
+            RevokeReasonJSON = json.dumps(RevokeReasonData)
+            RevokeCAURL = (self.Com.ZeroSSL + f"/{CertificateID}/revoke?access_key={self.ZeroSSLAuth}")
+            with requests.post(RevokeCAURL, headers=self.ZeroSSLHeader, data=RevokeReasonJSON ,timeout=30) as RevokeRespon:
+                if RevokeRespon.status_code == 200:
+                    RevokeResponData = RevokeRespon.json()
+                    RevokeStatus = RevokeResponData.get("success")
+                    if RevokeStatus == False:
+                        RevokeErrorStatus = RevokeResponData.get("error",{}).get("type","Unknown error")
+                        logging.warning(f"Error occurred during revoke certificate |API error: {RevokeErrorStatus}")
+                        return False
+                    return RevokeResponData
+                elif RevokeRespon.status_code != 200:
+                    logging.error(f"Unable connect ZeroSSL API |HTTP Error: {RevokeRespon.status_code}")
+                    return RevokeRespon.status_code
         except Exception as RevokeCAError:
-            logging.exception(RevokeCAError)
+            logging.exception(f"Error occurred during revoke certificate |Error:{RevokeCAError}")
             return False
-        # QC 2025K22
+        # UNQC

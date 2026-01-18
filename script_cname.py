@@ -2,153 +2,107 @@
 import acme4zerossl as acme
 from time import sleep
 from sys import exit
-
 # Config
 ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
 ServerCommand  = None
-
 # Script
-def main():
+def main(VerifyRetry, Interval):
     Rt = acme.Runtime(ConfigFilePath)
     Tg = acme.Telegram(ConfigFilePath)
     Cf = acme.Cloudflare(ConfigFilePath)
     Zs = acme.ZeroSSL(ConfigFilePath)
     # Create certificates signing request
     ResultCreateCSR = Rt.CreateCSR()
-    if isinstance(ResultCreateCSR, bool):
-        Tg.Message2Me("Error occurred during Create CSR and Private key.")
-        raise
-    elif isinstance(ResultCreateCSR, int):
-        Rt.Message("Successful create CSR and Private key.")
+    if not isinstance(ResultCreateCSR, list):
+        raise RuntimeError("Error occurred during Create CSR and Private key.")
+    Rt.Message("Successful create CSR and Private key.")
     # Sending CSR
     VerifyRequest = Zs.ZeroSSLCreateCA()
-    # Function error
-    if isinstance(VerifyRequest, bool):
-        Tg.Message2Me("Error occurred during request new certificate.")
-        raise
-    # ZeroSSL REST API HTTP error
-    elif isinstance(VerifyRequest, int):
-        Tg.Message2Me(f"Unable connect ZeroSSL API, HTTP Error: {VerifyRequest}")
-        raise
+    if not isinstance(VerifyRequest, dict):
+        raise RuntimeError("Error occurred during request new certificate.")
     # Phrasing ZeroSSL verify
-    elif isinstance(VerifyRequest, dict):
-        VerifyData = Zs.ZeroSSLVerifyData(VerifyRequest, Mode="CNAME")
-    # Check verify data
-    if isinstance(VerifyData, bool):
-        Rt.Message(f"Error occurred during phrasing ZeroSSL verify data.")
-        raise
-    elif isinstance(VerifyData, dict):
-        Rt.Message(f"ZeroSSL API request successful, certificate hash: {VerifyData.get('id')}")
+    VerifyData = Zs.ZeroSSLVerifyData(VerifyRequest, ValidationMethod="CNAME_CSR_HASH")
+    if not isinstance(VerifyData, dict):
+        raise RuntimeError("Error occurred during phrasing ZeroSSL verify data.")
+    CertificateID = VerifyData.get("id", None)
+    if CertificateID is None:
+        raise RuntimeError("Certificate hash is empty.")
+    Rt.Message(f"ZeroSSL API request successful, certificate hash: {CertificateID}")
     # Update CNAME via Cloudflare API
-    if ("additional_domains") in VerifyData:
-        UpdatePayloads = [
-            VerifyData.get('common_name'),
-            VerifyData.get('additional_domains')]
-    elif ("additional_domains") not in VerifyData:
-        UpdatePayloads = [
-            VerifyData.get('common_name')]
+    UpdatePayloads = [VerifyData['common_name']]
+    AdditionalDomains = VerifyData.get('additional_domains')
+    if AdditionalDomains:
+        UpdatePayloads.append(AdditionalDomains)
     # Update Cloudflare CNAME records
     for UpdatePayload in UpdatePayloads:
         ResultUpdateCFCNAME = Cf.UpdateCFCNAME(UpdatePayload)
-        # Function error
-        if isinstance(ResultUpdateCFCNAME, bool):
-            Tg.Message2Me(f"Error occurred during update CNAME, may be config error.")
-            raise
-        # Cloudflare API HTTP error
-        elif isinstance(ResultUpdateCFCNAME, int):
-            Tg.Message2Me(f"Unable connect Cloudflare API, HTTP Error: {ResultUpdateCFCNAME}")
-            raise
         # Check CNAME update result
-        elif isinstance(ResultUpdateCFCNAME, dict):
-            ResultUpdateResult = ResultUpdateCFCNAME.get("success")
-            if ResultUpdateResult == True:
-                Rt.Message("Successful update CNAME from Cloudflare.")
-                sleep(5)
-            elif ResultUpdateResult == False:
-                Tg.Message2Me(f"Cloudflare API Failed, {ResultUpdateCFCNAME.get('errors','error message is empty')}.")
-                raise
-            else:
-                Tg.Message2Me("Undefined error occurred during connect to Cloudflare API.")
-                raise
+        if not isinstance(ResultUpdateCFCNAME, dict):
+            raise RuntimeError("Error occurred during connect to Cloudflare API update CNAME.")
         else:
-            Tg.Message2Me("Undefined error occurred during update CNAME.")
-            raise
+            Rt.Message("Successful update CNAME from Cloudflare.")
+            sleep(5)
     # Wait DNS records update and active
     sleep(30)
     # Verify CNAME challenge
-    CertificateID = VerifyData.get("id","")
     VerifyResult = Zs.ZeroSSLVerification(CertificateID, ValidationMethod="CNAME_CSR_HASH")
-    # Function error
-    if isinstance(VerifyResult, bool):
-        Tg.Message2Me("Error occurred during CNAME verification.")
-        raise
-    # ZeroSSL REST API HTTP error
-    elif isinstance(VerifyResult, int):
-        Tg.Message2Me(f"Unable connect ZeroSSL API, HTTP Error: {VerifyResult}.")
-        raise
-    # Possible errors respon
-    elif isinstance(VerifyResult, dict) and ("error") in VerifyResult:
-        VerifyErrorStatus = VerifyResult.get("error",{}).get("type","Unknown Error")
-        Rt.Message(f"Error occurred during CNAME verification: {VerifyErrorStatus}")
-        raise Exception (VerifyErrorStatus)
+    if not isinstance(VerifyResult, str):
+        raise RuntimeError("Error occurred during CNAME verification.")
     # Check verify status
-    elif isinstance(VerifyResult, dict) and ("status") in VerifyResult:
-        VerifyStatus = VerifyResult.get("status")
-        # Verify successful, wait issued
-        if VerifyStatus == ("draft"):
-            Rt.Message("Not verified yet.")
-            raise
-        elif VerifyStatus == ("pending_validation"):
-            Rt.Message("CNAME verify successful, wait certificate issued.")
-            sleep(30)
-        # Verify successful and been issued
-        elif VerifyStatus == ("issued"):
-            Rt.Message("CNAME verify successful, certificate been issued.")
-            sleep(5)
-        # Undefined error
+    if VerifyResult == ("draft"):
+        raise RuntimeError("Not verified yet.")
+    # Verify passed, wait till issued
+    elif VerifyResult == ("pending_validation"):
+        Rt.Message("CNAME verify successful, wait certificate issued.")
+        for _ in range(VerifyRetry):
+            sleep(Interval)
+            VerifyResult = Zs.ZeroSSLVerification(CertificateID, ValidationMethod="CNAME_CSR_HASH")
+            if VerifyResult == ("issued"):
+                Rt.Message("CNAME verify successful, certificate been issued.")
+                break
         else:
-            Rt.Message(f"Unable to check verify status, currently status: {VerifyStatus}")
-            raise
+            raise RuntimeError(f"Certificate not issued after waiting, status: {VerifyResult}")
+    # Issued
+    elif VerifyResult == ("issued"):
+        Rt.Message("CNAME verify successful, certificate been issued.")
+        sleep(5)
+    # Undefined error
+    else:
+        raise RuntimeError(f"Unable to check verify status, undefined status: {VerifyResult}")
     # Download certificates
     CertificateContent = Zs.ZeroSSLDownloadCA(CertificateID)
-    if isinstance(CertificateContent, bool):
-        Tg.Message2Me("Error occurred during certificates download.")
-        raise
-    elif isinstance(CertificateContent, str):
-        Tg.Message2Me(f"Error occurred during download certificate. {CertificateContent}")
-        raise Exception(CertificateContent)
-    elif isinstance(CertificateContent, dict) and ("certificate.crt") in CertificateContent:
-        Rt.Message("Certificate has been downloaded.")
-        sleep(5)
+    if not isinstance(CertificateContent, dict):
+        raise RuntimeError("Error occurred during certificates download.")
+    Rt.Message("Certificate has been downloaded.")
+    sleep(5)
     # Install certificate to server folder
     ResultCheck = Rt.CertificateInstall(CertificateContent, ServerCommand)
-    ExpiresDate = VerifyResult.get("expires")
-    if isinstance(ResultCheck, bool):
-        Tg.Message2Me("Error occurred during certificate install. You may need to download and install manually.")
-        raise
-    elif isinstance(ResultCheck, int):
+    if ResultCheck is False:
+        raise RuntimeError("Error occurred during certificate install. You may need to download and install manually.")
+    # Get certificate expires date
+    ExpiresDate = VerifyData.get("expires","unknown")
+    if isinstance(ResultCheck, int):
         Tg.Message2Me(f"Certificate been renewed, will expires in {ExpiresDate}. You may need to restart server manually.")
-    elif isinstance(ResultCheck, (list,str)):
+        return
+    elif isinstance(ResultCheck, list):
         Tg.Message2Me(f"Certificate been renewed and installed, will expires in {ExpiresDate}.")
-    else:
-        raise
+        return
 # Runtime, including check validity date of certificate
 if __name__ == "__main__":
     try:
         Rt = acme.Runtime(ConfigFilePath)
-        # Minimum is 14 days
-        CertificateMinimum = Rt.ExpiresCheck()
+        Tg = acme.Telegram(ConfigFilePath)
+        # Default minimum is 14 days
+        ExpiresDays = Rt.ExpiresCheck()
         # Renew determination
-        if isinstance(CertificateMinimum, bool):
-            RenewResult = main()
-            # Systemd check
-            if isinstance(RenewResult, bool):
-                exit(1)
-            else:
-                exit(0)
-        elif isinstance(CertificateMinimum, int):
-            Rt.Message(f"Certificate's validity date has {CertificateMinimum} days left.")
+        if ExpiresDays is None:
+            main(5,60)
             exit(0)
-    except Exception:
+        # No need to renew
+        Rt.Message(f"Certificate's validity date has {ExpiresDays} days left.")
+        exit(0)
+    except Exception as RenewedError:
+        RenewedErrorMessage = str(RenewedError)
+        Tg.Message2Me(RenewedErrorMessage)
         exit(1)
 # UNQC
