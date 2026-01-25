@@ -1,13 +1,18 @@
 # -*- coding: utf-8 -*-
 import acme4zerossl as acme
+import argparse
+import logging
 from time import sleep
 from sys import exit
+
 # Config
 ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
-# Validation Method
-ValidationMethod = "CNAME_CSR_HASH"
+
+# Error handling
+FORMAT = "%(asctime)s |%(levelname)s |%(message)s"
+logging.basicConfig(level=logging.INFO, filename="error.acme4zerossl.log", filemode="a", format=FORMAT)
 # Script
-def main(CertificateID, VerifyRetry, Interval):
+def main(CertificateID, ValidationMethod, VerifyRetry, Interval):
     Rt = acme.Runtime(ConfigFilePath)
     Zs = acme.ZeroSSL(ConfigFilePath)
     # Prompt
@@ -18,21 +23,22 @@ def main(CertificateID, VerifyRetry, Interval):
     if not isinstance(VerifyStatus, str):
         raise RuntimeError("Error occurred during verification.")
     # Check verify status
-    if VerifyStatus == ("draft"):
+    if VerifyStatus == "draft":
         raise RuntimeError("Not verified yet.")
     # Verify passed, wait till issued
-    elif VerifyStatus == ("pending_validation"):
-        Rt.Message("Verify successful, wait certificate issued.")
+    elif VerifyStatus == "pending_validation":
+        Rt.Message("Verify successful, waiting certificate issuance.")
+        # Adding retry and interval in case backlog certificate issuance
         for _ in range(VerifyRetry):
             sleep(Interval)
             VerifyStatus = Zs.ZeroSSLVerification(CertificateID, ValidationMethod)
-            if VerifyStatus == ("issued"):
+            if VerifyStatus == "issued":
                 Rt.Message("Verify successful, certificate been issued.")
                 return
         else:
-            raise RuntimeError(f"Certificate not issued after waiting, status: {VerifyStatus}")
+            raise RuntimeError(f"Certificate wasn't issued after waiting, currently status: {VerifyStatus}")
     # Issued
-    elif VerifyStatus == ("issued"):
+    elif VerifyStatus == "issued":
         Rt.Message("Verify successful, certificate been issued.")
         return
     # Undefined error
@@ -41,13 +47,21 @@ def main(CertificateID, VerifyRetry, Interval):
 # Runtime
 if __name__ == "__main__":
     try:
-        Rt = acme.Runtime(ConfigFilePath)
-        # Print prompt
-        Rt.Message("Manual verify start. Certificate hash reference from cache file by default.")
-        CertificateID = input("Please input certificate ID (hash), or press ENTER using cache file: ")
+        parser = argparse.ArgumentParser()
+        # Certificate ID input selection
+        parser.add_argument("--ca", nargs="?", default=None, const=None, help="Please input certificate ID (hash), omit to using cache file")
+        # Validation Method selection
+        parser.add_argument("--vm", nargs="?", default="CNAME_CSR_HASH", const="CNAME_CSR_HASH", help="Validation method, default is CNAME_CSR_HASH)")
+        args = parser.parse_args()
+        CertificateID = args.ca
+        ValidationMethod = args.vm
         # Verify, Retry 5 times, period 60s
-        main(CertificateID,5,60)
+        main(CertificateID, ValidationMethod, 15, 60)
         exit(0)
-    except Exception:
+    except KeyboardInterrupt:
+        logging.info("Manually interrupt")
+        exit(0)
+    except Exception as RenewedError:
+        logging.exception(f"Script error| {RenewedError}")
         exit(1)
 # UNQC

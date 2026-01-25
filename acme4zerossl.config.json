@@ -17,6 +17,7 @@
    },
    "Certificate":{
       "Domains": ["www.example.com", "example.com"],
+      "ValidityDays": 90,
       "Country": "",
       "StateOrProvince": "",
       "Locality": "",

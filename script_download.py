@@ -1,22 +1,33 @@
 # -*- coding: utf-8 -*-
 import acme4zerossl as acme
+import logging
+import argparse
+from time import sleep
 from sys import exit
+
 # Config
 ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
+
+# Error handling
+FORMAT = "%(asctime)s |%(levelname)s |%(message)s"
+logging.basicConfig(level=logging.INFO, filename="error.acme4zerossl.log", filemode="a", format=FORMAT)
 # Script
-def main(CertificateID):
+def main(CertificateID, VerifyRetry, Interval):
     Rt = acme.Runtime(ConfigFilePath)
     Zs = acme.ZeroSSL(ConfigFilePath)
-    # Download certificate payload
-    CertificateContent = Zs.ZeroSSLDownloadCA(CertificateID)
-    # Status check, Error
-    if not isinstance(CertificateContent, dict):
-        raise RuntimeError("Error occurred during certificates download.")
-    # Download
-    Rt.Message(f"Downloading certificate...")
+    # Download certificates, adding retry and interval in case backlog certificate issuance
+    for _ in range(VerifyRetry):
+        CertificateContent = Zs.ZeroSSLDownloadCA(CertificateID)
+        if isinstance(CertificateContent, dict):
+            Rt.Message("Certificate has been downloaded.")
+            break
+        sleep(Interval)
+    else:
+        raise RuntimeError(f"Unable download certificate after waiting.")
+    # Install certificate to server folder
     ResultCheck = Rt.CertificateInstall(CertificateContent)
     if ResultCheck is False:
-        raise RuntimeError("Error occurred during certificate saving.")
+        raise RuntimeError("Error occurred during moving certificate to folder.")
     if isinstance(ResultCheck, int):
         Rt.Message("Certificate been downloaded to folder. You may need to restart server manually.")
         return
@@ -26,14 +37,18 @@ def main(CertificateID):
 # Runtime
 if __name__ == "__main__":
     try:
-        Rt = acme.Runtime(ConfigFilePath)
-        # Print prompt
-        Rt.Message("Certificate manual download script. Download certificate hash reference from cache file by default.")
-        # Input certificate hash manually
-        CertificateID = input("Please input certificate ID (hash), or press ENTER using cache file: ")
+        parser = argparse.ArgumentParser()
+        # Certificate ID input selection
+        parser.add_argument("--ca", nargs="?", default=None, const=None, help="Please input certificate ID (hash), omit to using cache file")
+        args = parser.parse_args()
+        CertificateID = args.ca
         # Download
-        main(CertificateID)
+        main(CertificateID, 15, 60)
         exit(0)
-    except Exception:
+    except KeyboardInterrupt:
+        logging.info("Manually interrupt")
+        exit(0)
+    except Exception as ScriptError:
+        logging.exception(f"Script error |{ScriptError}")
         exit(1)
 # UNQC
