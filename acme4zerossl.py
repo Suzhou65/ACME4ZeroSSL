@@ -69,7 +69,8 @@ class Runtime():
             self.MessageWidth  = 100
         # Class initial error
         except Exception as RuntimeInitialError:
-            a4zlog.exception(f"Runtime_init_Error |{RuntimeInitialError}")
+            a4zlog.exception(f"Runtime_Initialization_Error |{RuntimeInitialError}")
+            raise
 
     # Print runtime info
     def Message(self,MessageText):
@@ -309,48 +310,61 @@ class Telegram():
             self.RtM          = Runtime(ConfigFilePath)
         except Exception as TelegramInitialError:
             a4zlog.exception(f"Telegram__init__ |{TelegramInitialError}")
+            raise
 
     # Set default message for testing
-    def Message2Me(self,TelegramMessage='Here, the world!'):
+    def Message2Me(self,TelegramMessage="Here, the world!"):
         try:
+            # Disable message sending
+            if not str(self.BotToken).strip():
+                return
             # Text content with domain name
-            TgText = (f"{self.Domainheader}\n" + TelegramMessage)
-            TgMsg  = {"chat_id":f"{self.ChatID}","text":TgText}
+            MessageHeader = (f"{self.Domainheader}\n" + TelegramMessage)
+            MessageText = {"chat_id":f"{self.ChatID}","text":MessageHeader}
             # Connetc URL
-            TgURL = (self.Com.Telegram + f"{self.BotToken}/sendMessage")
-            with requests.post(TgURL,json=TgMsg,timeout=30) as TgResponse:
-                if TgResponse.status_code == 200:
-                    self.RtM.Message(TelegramMessage)
-                elif TgResponse.status_code == 400:
-                    a4zlog.warning(f"Telegram ChatID is empty, notifications will not be sent")
-                else:
-                    a4zlog.warning(f"Unable sending notifications |HTTP Error: {TgResponse.status_code}")
+            TelegramSendURL = (self.Com.Telegram + f"{self.BotToken}/sendMessage")
+            with requests.Session() as MessageSender:
+                PostResponse = MessageSender.post(TelegramSendURL,json=MessageText,timeout=30)
+            if PostResponse.status_code == 200:
+                pass
+            elif PostResponse.status_code == 400:
+                a4zlog.warning(f"Telegram ChatID is empty, notifications will not be sent")
+            else:
+                a4zlog.warning(f"Unable sending notifications |HTTP Error: {PostResponse.status_code}")
         except Exception as Message2MeError:
             a4zlog.exception(f"Error occurred during sending notifications |Error: {Message2MeError}")
-        # QC 2025K23
+        # QC 2026A29
 
     # Get Telegram ChatID
     def GetChatID(self):
         try:
-            TgAskURL = (self.Com.Telegram + f"{self.BotToken}/getUpdates")
-            with requests.post(TgAskURL,timeout=30) as TgAskResponse:
-                if TgAskResponse.status_code == 200:
-                    TgAskData = TgAskResponse.json()
-                    TgAskResult = TgAskData.get("result")
-                    # Empty result
-                    if not TgAskResult:
-                        self.RtM.Message("You must send message to bot first")
-                        return
-                    # Select ChatID
-                    CheckChatList = TgAskData.get("result")
-                    CheckChatResult = CheckChatList[0]
-                    CheckChatID = CheckChatResult.get("message",{}).get("chat",{}).get("id")
-                    self.RtM.Message(f"You ChatID is: {CheckChatID}")
-                elif TgAskResponse.status_code != 200:
-                    a4zlog.warning(f"Unable get ChatID |HTTP Error: {TgAskResponse.status_code}")
+            # Disable ChatID checker
+            if not str(self.BotToken).strip():
+                return
+            # Connetc URL
+            AskChatIDURL = (self.Com.Telegram + f"{self.BotToken}/getUpdates")
+            with requests.Session() as AskChatID:
+                ChatIDResponse = AskChatID.post(AskChatIDURL,timeout=30)
+            if ChatIDResponse.status_code == 200:
+                TelegramData = ChatIDResponse.json()
+            else:
+                a4zlog.warning(f"Unable get ChatID |HTTP Error: {ChatIDResponse.status_code}")
+                return
+            # Check JSON
+            AskChatIDResult = TelegramData.get("result")
+            # Empty result
+            if not AskChatIDResult:
+                self.RtM.Message("You must send message to bot at first")
+                return
+            else:
+                # Select ChatID
+                CheckChatList = AskChatIDResult.get("result")
+                CheckChatResult = CheckChatList[0]
+                CheckChatID = CheckChatResult.get("message",{}).get("chat",{}).get("id")
+                self.RtM.Message(f"You ChatID is: {CheckChatID}")
         except Exception as GetChatIDError:
             a4zlog.exception(f"Error occurred during get ChatID |Error: {GetChatIDError}")
-        # QC 2025L10 Mod
+        # QC 2026A29
 
 # Cloudflare API package
 class Cloudflare():
@@ -368,58 +382,61 @@ class Cloudflare():
     # Verify Cloudflare API token
     def VerifyCFToken(self,DisplayVerifyResult=None):
         try:
-            VerifyCFTokenURL = (self.Com.Cloudflare + "user/tokens/verify")
-            with requests.get(VerifyCFTokenURL,headers=self.CFHeader,timeout=30) as TokenVerifyResponse:
+            VerifTokenAPI = (self.Com.Cloudflare + "user/tokens/verify")
+            with requests.Session() as TokenVerify:
+                TokenVerifyResponse = TokenVerify.get(VerifTokenAPI,headers=self.CFHeader,timeout=30)
                 if TokenVerifyResponse.status_code == 200:
                     TokenVerifyData = TokenVerifyResponse.json()
-                    # Check respon status
-                    VerifyCheckStatus = TokenVerifyData.get("success")
-                    # Error
-                    if VerifyCheckStatus == False:
-                        TokenVerifyError = TokenVerifyData.get("errors")
-                        a4zlog.warning(f"Error occurred during update verify token |API error: {TokenVerifyError}")
-                        return False
-                    # Success
-                    if DisplayVerifyResult is None:
-                        return TokenVerifyData.get("result",{}).get("status")
-                    else:
-                        return TokenVerifyData
-                elif TokenVerifyResponse.status_code != 200:
+                else:
                     a4zlog.warning(f"Unable connect Cloudflare API |HTTP Error: {TokenVerifyResponse.status_code}")
-                    return TokenVerifyResponse.status_code
+                    return False
+            # Check respon status
+            VerifyCheckStatus = TokenVerifyData.get("success")
+            # Error
+            if VerifyCheckStatus == False:
+                TokenVerifyError = TokenVerifyData.get("errors")
+                a4zlog.warning(f"Error occurred during update verify token |API error: {TokenVerifyError}")
+                return False
+            # Success
+            if DisplayVerifyResult is None:
+                return TokenVerifyData.get("result",{}).get("status")
+            else:
+                return TokenVerifyData
         except Exception as VerifyCFTokenError:
             a4zlog.exception(f"Error occurred during verify Cloudflare API token |Error: {VerifyCFTokenError}")
             return False
-        # QC 2026A16
+        # QC 2026A29
 
     # Download all DNS records from Cloudflare
     def GetCFRecords(self,FileOutput=None):
         try:
-            GetCFRecordsURL = (self.Com.Cloudflare + f"zones/{self.Zone}/dns_records")
-            with requests.get(GetCFRecordsURL,headers=self.CFHeader,timeout=30) as RecordsRespon:
-                # Return records as dict
+            GetZoneDNSRecordsAPI = (self.Com.Cloudflare + f"zones/{self.Zone}/dns_records")
+            with requests.Session() as GetCloudflareRecords:
+                RecordsRespon = GetCloudflareRecords.get(GetZoneDNSRecordsAPI,headers=self.CFHeader,timeout=30)
+                # Check HTTP status
                 if RecordsRespon.status_code == 200:
-                    RecordsData = RecordsRespon.json()
-                    GetRecordsStatus = RecordsData.get("success")
-                    if GetRecordsStatus == False:
-                        GetRecordsError = RecordsData.get("errors")
-                        a4zlog.warning(f"Error occurred during download DNS records |API error: {GetRecordsError}")
-                        return False
-                    # Enable records file output
-                    if FileOutput is not None:
-                        RecordsOutputPath = Path(FileOutput)
-                        with RecordsOutputPath.open("w",encoding="utf-8") as RecordsFile:
-                            json.dump(RecordsData,RecordsFile,indent=3)
-                        return FileOutput
-                    else:
-                        return RecordsData
-                elif RecordsRespon.status_code != 200:
+                    RecordsResponData = RecordsRespon.json()
+                else:
                     a4zlog.warning(f"Unable connect Cloudflare API |HTTP Error: {RecordsRespon.status_code}")
-                    return RecordsRespon.status_code
+                    return False
+            # Return records as dict
+            GetRecordsStatus = RecordsResponData.get("success")
+            if GetRecordsStatus == False:
+                GetRecordsError = RecordsResponData.get("errors")
+                a4zlog.warning(f"Error occurred during download DNS records |API error: {GetRecordsError}")
+                return False
+            # Enable records file output
+            if FileOutput is not None:
+                RecordsOutputPath = Path(FileOutput)
+                with RecordsOutputPath.open("w",encoding="utf-8") as RecordsFile:
+                    json.dump(RecordsResponData,RecordsFile,indent=3)
+                return FileOutput
+            else:
+                return RecordsResponData
         except Exception as GetCFRecordsError:
             a4zlog.exception(f"Error occurred during download DNS records |Error: {GetCFRecordsError}")
             return False
-        # QC 2026A16
+        # QC 2026A29
 
     # Update CNAME records at Cloudflare
     def UpdateCFCNAME(self,UpdatePayload):
@@ -429,28 +446,32 @@ class Cloudflare():
             if not RecordID:
                 a4zlog.warning(f"Error occurred during phrasing CNAME update payload |Record ID: {RecordID}")
                 return False
-            UpdateCNAMEURL = (self.Com.Cloudflare + f"zones/{self.Zone}/dns_records/{RecordID}")
             # CNAME update payload
             CNAMEText = UpdatePayload.get("cname")
             CNAMEValue = UpdatePayload.get("value")
             if not (CNAMEText and CNAMEValue):
                 a4zlog.warning(f"Error occurred during phrasing CNAME update payload |CNAME: {CNAMEText} |Value: {CNAMEValue}")
                 return False
-            UpdateCNAMEData = {"type":"CNAME","name":CNAMEText,"content":CNAMEValue,"proxiable":False,"proxied":False,"ttl":1}
-            UpdateJSON = json.dumps(UpdateCNAMEData)
+            # Payload
+            UpdateCNAMEContent = {"type":"CNAME","name":CNAMEText,"content":CNAMEValue,"proxiable":False,"proxied":False,"ttl":1}
+            UpdateCNAMEJSON = json.dumps(UpdateCNAMEContent)
             # Update
-            with requests.put(UpdateCNAMEURL,headers=self.CFHeader,data=UpdateJSON,timeout=30) as UpdateRespon:
+            UpdateCNAMEAPI = (self.Com.Cloudflare + f"zones/{self.Zone}/dns_records/{RecordID}")
+            with requests.Session() as RequestCNAMEUpdate:
+                UpdateRespon = RequestCNAMEUpdate.put(UpdateCNAMEAPI,headers=self.CFHeader,data=UpdateCNAMEJSON,timeout=30)
                 if UpdateRespon.status_code == 200:
                     UpdateResponData = UpdateRespon.json()
-                    UpdateResponCheck = UpdateResponData.get("success")
-                    if UpdateResponCheck == False:
-                        UpdateCNAMEError = UpdateResponData.get("errors")
-                        a4zlog.warning(f"Error occurred during update CNAME record |API error: {UpdateCNAMEError}")
-                        return False
-                    return UpdateResponData
-                elif UpdateRespon.status_code != 200:
+                else:
                     a4zlog.warning(f"Unable connect Cloudflare API |HTTP Error: {UpdateRespon.status_code}")
-                    return UpdateRespon.status_code
+                    return False
+            # Check
+            UpdateResponCheck = UpdateResponData.get("success")
+            if UpdateResponCheck == False:
+                UpdateCNAMEError = UpdateResponData.get("errors")
+                a4zlog.warning(f"Error occurred during update CNAME record |API error: {UpdateCNAMEError}")
+                return False
+            else:
+                return UpdateResponData
         except Exception as UpdateCNAMEError:
             a4zlog.exception(f"Error occurred during update CNAME record |Error: {UpdateCNAMEError}")
             return False
@@ -490,44 +511,46 @@ class ZeroSSL():
 
     # Sending certificate create request
     def ZeroSSLCreateCA(self):
-        # Read Certificates signing request
-        CSRFile = Path(self.ZeroSSLCSR)
-        with CSRFile.open("r") as CSRFileData:
-            CSRPayload = CSRFileData.read()
-        # Reading domain
-        if len(self.DomainList) > 1 and self.DomainList[1]:
-            CertificateDomains = f"{self.DomainList[0]},{self.DomainList[1]}"
-        else:
-            CertificateDomains = f"{self.DomainList[0]}"
-        # Package as JSON
-        CreatePayload = {"certificate_domains":CertificateDomains,"certificate_validity_days":self.ValidityDays,"certificate_csr":CSRPayload}
-        CreateJSON = json.dumps(CreatePayload)
         try:
-            CreateCA = (self.Com.ZeroSSL + f"?access_key={self.ZeroSSLAuth}")
-            with requests.post(CreateCA,headers=self.ZeroSSLHeader,data=CreateJSON,timeout=30) as CreateCARespon:
-                if CreateCARespon.status_code == 200:
-                    CreateCAData = CreateCARespon.json()
-                    # Possible errors respon
-                    CreateCAError = CreateCAData.get("success")
-                    if CreateCAError == False:
-                        CreateCAErrorStatus = CreateCAData.get("error",{}).get("type","Unknown error")
-                        a4zlog.warning(f"Error occurred during request new certificate |API error: {CreateCAErrorStatus}")
-                        return False
-                    # Check certificate status
-                    VerifyStatus = CreateCAData.get("status",None)
-                    if VerifyStatus is not None:
-                        # Saving validation data
-                        ValidationCacheFile = Path(self.Validation)
-                        with ValidationCacheFile.open("w",encoding="utf-8") as ValidationData:
-                            json.dump(CreateCAData,ValidationData,indent=4)
-                        return CreateCAData
-                    # Catch exception
-                    else:
-                        a4zlog.warning(f"Unknown error occurred during request new certificate")
-                        return False
-                elif CreateCARespon.status_code != 200:
-                    a4zlog.warning(f"Unable connect ZeroSSL API |HTTP Error: {CreateCARespon.status_code}")
-                    return CreateCARespon.status_code
+            # Read Certificates signing request
+            CSRFile = Path(self.ZeroSSLCSR)
+            with CSRFile.open("r") as CSRFileData:
+                CSRPayload = CSRFileData.read()
+            # Reading domain
+            if len(self.DomainList) > 1 and self.DomainList[1]:
+                CertificateDomains = f"{self.DomainList[0]},{self.DomainList[1]}"
+            else:
+                CertificateDomains = f"{self.DomainList[0]}"
+            # Package as JSON
+            CertificateCreateContent = {"certificate_domains":CertificateDomains,"certificate_validity_days":self.ValidityDays,"certificate_csr":CSRPayload}
+            CertificateCreateJSON = json.dumps(CertificateCreateContent)
+            # URL
+            CertificateCreateREST = (self.Com.ZeroSSL + f"?access_key={self.ZeroSSLAuth}")
+            with requests.Session() as RequestCreate:
+                CreateRespon = RequestCreate.post(CertificateCreateREST,headers=self.ZeroSSLHeader,data=CertificateCreateJSON,timeout=30)
+                if CreateRespon.status_code == 200:
+                    CreateResponData = CreateRespon.json()
+                else:
+                    a4zlog.warning(f"Unable connect ZeroSSL API |HTTP Error: {CreateRespon.status_code}")
+                    return False
+             # Possible errors respon
+            CreateCAError = CreateResponData.get("success")
+            if CreateCAError == False:
+                CreateCAErrorStatus = CreateResponData.get("error",{}).get("type","Unknown error")
+                a4zlog.warning(f"Error occurred during request new certificate |API error: {CreateCAErrorStatus}")
+                return False
+            # Check certificate status
+            VerifyStatus = CreateResponData.get("status",None)
+            if VerifyStatus is not None:
+                # Saving validation data
+                ValidationCacheFile = Path(self.Validation)
+                with ValidationCacheFile.open("w",encoding="utf-8") as ValidationData:
+                    json.dump(CreateResponData,ValidationData,indent=4)
+                return CreateResponData
+            # Catch exception
+            else:
+                a4zlog.warning(f"Unknown error occurred during request new certificate")
+                return False
         except Exception as ErrorStatus:
             a4zlog.exception(f"Error occurred during request new certificate |Error: {ErrorStatus}")
             return False
@@ -602,24 +625,25 @@ class ZeroSSL():
                 a4zlog.warning("Certificate ID is empty after cache fallback")
                 return False
             # Verification URL and verification method, default is CNAME
-            VerificationURL = (self.Com.ZeroSSL + f"/{CertificateID}/challenges?access_key={self.ZeroSSLAuth}")
+            VerificationREST = (self.Com.ZeroSSL + f"/{CertificateID}/challenges?access_key={self.ZeroSSLAuth}")
             VerifyMethodData = {"validation_method":ValidationMethod}
             VerifyMethodJSON = json.dumps(VerifyMethodData)
-            with requests.post(VerificationURL,headers=self.ZeroSSLHeader,data=VerifyMethodJSON,timeout=30) as VerificationRespon:
+            with requests.Session() as RequestVerification:
+                VerificationRespon = RequestVerification.post(VerificationREST,headers=self.ZeroSSLHeader,data=VerifyMethodJSON,timeout=30)
                 if VerificationRespon.status_code == 200:
-                    VerificationData = VerificationRespon.json()
-                    # Possible errors respon
-                    VerifyCheck = VerificationData.get("success")
-                    if VerifyCheck == False:
-                        VerifyErrorStatus = VerificationData.get("error",{}).get("type","Unknown error")
-                        a4zlog.warning(f"Error occurred during verification |API error: {VerifyErrorStatus}")
-                        return False
-                    # Get certificate status
-                    VerifyStatus = VerificationData.get("status",False)
-                    return VerifyStatus
-                elif VerificationRespon.status_code != 200:
+                    VerificationResponData = VerificationRespon.json()
+                else:
                     a4zlog.warning(f"Unable connect ZeroSSL API |HTTP Error: {VerificationRespon.status_code}")
-                    return VerificationRespon.status_code
+                    return False
+            # Possible errors respon
+            VerifyCheck = VerificationResponData.get("success")
+            if VerifyCheck == False:
+                VerifyErrorStatus = VerificationResponData.get("error",{}).get("type","Unknown error")
+                a4zlog.warning(f"Error occurred during verification |API error: {VerifyErrorStatus}")
+                return False
+            # Get certificate status
+            VerifyStatus = VerificationResponData.get("status",False)
+            return VerifyStatus                
         except Exception as CAVerificationError:
             a4zlog.exception(f"Error occurred during verification |Error: {CAVerificationError}")
             return False
@@ -638,25 +662,26 @@ class ZeroSSL():
                 a4zlog.warning("Certificate ID is empty after cache fallback")
                 return False
             # Download
-            DownloadCertificateURL = (self.Com.ZeroSSL + f"/{CertificateID}/download/return?access_key={self.ZeroSSLAuth}")
+            CertificateDownloadREST = (self.Com.ZeroSSL + f"/{CertificateID}/download/return?access_key={self.ZeroSSLAuth}")
             # ZeroSSL Inline download certificate need JSON header
-            with requests.get(DownloadCertificateURL,headers=self.ZeroSSLHeader,timeout=30) as DownloadRespon:
+            with requests.Session() as RequestDownload:
+                DownloadRespon = RequestDownload.get(CertificateDownloadREST,headers=self.ZeroSSLHeader,timeout=30)
                 if DownloadRespon.status_code == 200:
-                    CertificatePayload = DownloadRespon.json()
-                    # Possible errors respon
-                    DownloadCheck = CertificatePayload.get("success")
-                    if DownloadCheck == False:
-                        DownloadErrorStatus = CertificatePayload.get("error",{}).get("type","Unknown error")
-                        a4zlog.warning(f"Error occurred during download certificate |API error: {DownloadErrorStatus}")
-                        return False
-                    # Return certificate payload, inline mode check
-                    if not CertificatePayload.get(self.Certificate,"").strip():
-                        a4zlog.warning(f"Certificate payload is empty during download certificate")
-                        return False
-                    return CertificatePayload
-                elif DownloadRespon.status_code != 200:
+                    DownloadResponData = DownloadRespon.json()
+                else:
                     a4zlog.error(f"Unable connect ZeroSSL API |HTTP Error: {DownloadRespon.status_code}")
-                    return DownloadRespon.status_code
+                    return False
+            # Possible errors respon
+            DownloadCheck = DownloadResponData.get("success")
+            if DownloadCheck == False:
+                DownloadErrorStatus = DownloadResponData.get("error",{}).get("type","Unknown error")
+                a4zlog.warning(f"Error occurred during download certificate |API error: {DownloadErrorStatus}")
+                return False
+            # Return certificate payload, inline mode check
+            if not DownloadResponData.get(self.Certificate,"").strip():
+                a4zlog.warning(f"Certificate payload is empty during download certificate")
+                return False
+            return DownloadResponData
         except Exception as DownloadCAError:
             a4zlog.exception(f"Error occurred during downloading |Error: {DownloadCAError}")
             return False
@@ -665,19 +690,21 @@ class ZeroSSL():
     # Cancel certificate from ZeroSSL
     def ZeroSSLCancelCA(self,CertificateID):
         try:
-            CancelCAURL = (self.Com.ZeroSSL + f"/{CertificateID}/cancel?access_key={self.ZeroSSLAuth}")
-            with requests.post(CancelCAURL,headers=self.ZeroSSLHeader,timeout=30) as CancelRespon:
+            CertificateCancelREST = (self.Com.ZeroSSL + f"/{CertificateID}/cancel?access_key={self.ZeroSSLAuth}")
+            with requests.Session() as RequestCancel:
+                CancelRespon = RequestCancel.post(CertificateCancelREST,headers=self.ZeroSSLHeader,timeout=30)
                 if CancelRespon.status_code == 200:
                     CancelResponData = CancelRespon.json()
-                    CancelStatus = CancelResponData.get("success")
-                    if CancelStatus == False:
-                        CancelErrorStatus = CancelResponData.get("error",{}).get("type","Unknown error")
-                        a4zlog.warning(f"Error occurred during cancel certificate |API error: {CancelErrorStatus}")
-                        return False
-                    return CancelResponData
-                elif CancelRespon.status_code != 200:
+                else:
                     a4zlog.error(f"Unable connect ZeroSSL API |HTTP Error: {CancelRespon.status_code}")
-                    return CancelRespon.status_code
+                    return False
+            # Check status
+            CancelStatus = CancelResponData.get("success")
+            if CancelStatus == False:
+                CancelErrorStatus = CancelResponData.get("error",{}).get("type","Unknown error")
+                a4zlog.warning(f"Error occurred during cancel certificate |API error: {CancelErrorStatus}")
+                return False
+            return CancelResponData
         except Exception as CancelCAError:
             a4zlog.exception(f"Error occurred during cancel certificate |Error:{CancelCAError}")
             return False
@@ -691,19 +718,21 @@ class ZeroSSL():
                 RevokeReason = "Unspecified"
             RevokeReasonData = {"reason":f"{RevokeReason}"}
             RevokeReasonJSON = json.dumps(RevokeReasonData)
-            RevokeCAURL = (self.Com.ZeroSSL + f"/{CertificateID}/revoke?access_key={self.ZeroSSLAuth}")
-            with requests.post(RevokeCAURL,headers=self.ZeroSSLHeader,data=RevokeReasonJSON,timeout=30) as RevokeRespon:
+            CertificateRevokeREST = (self.Com.ZeroSSL + f"/{CertificateID}/revoke?access_key={self.ZeroSSLAuth}")
+            with requests.Session() as RequestRevoke:
+                RevokeRespon = RequestRevoke.post(CertificateRevokeREST,headers=self.ZeroSSLHeader,data=RevokeReasonJSON,timeout=30)
                 if RevokeRespon.status_code == 200:
                     RevokeResponData = RevokeRespon.json()
-                    RevokeStatus = RevokeResponData.get("success")
-                    if RevokeStatus == False:
-                        RevokeErrorStatus = RevokeResponData.get("error",{}).get("type","Unknown error")
-                        a4zlog.warning(f"Error occurred during revoke certificate |API error: {RevokeErrorStatus}")
-                        return False
-                    return RevokeResponData
-                elif RevokeRespon.status_code != 200:
+                else:
                     a4zlog.error(f"Unable connect ZeroSSL API |HTTP Error: {RevokeRespon.status_code}")
-                    return RevokeRespon.status_code
+                    return False
+            # Check status
+            RevokeStatus = RevokeResponData.get("success")
+            if RevokeStatus == False:
+                RevokeErrorStatus = RevokeResponData.get("error",{}).get("type","Unknown error")
+                a4zlog.warning(f"Error occurred during revoke certificate |API error: {RevokeErrorStatus}")
+                return False
+            return RevokeResponData
         except Exception as RevokeCAError:
             a4zlog.exception(f"Error occurred during revoke certificate |Error:{RevokeCAError}")
             return False
