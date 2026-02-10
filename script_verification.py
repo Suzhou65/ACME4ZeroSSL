@@ -33,7 +33,7 @@ def main(CertificateID, ValidationMethod, VerifyRetry, Interval):
             sleep(Interval)
             VerifyStatus = Zs.ZeroSSLVerification(CertificateID, ValidationMethod)
             if VerifyStatus == "issued":
-                Rt.Message("Verify successful, certificate been issued.")
+                Rt.Message("Certificate been issued.")
                 return
         else:
             raise RuntimeError(f"Certificate wasn't issued after waiting, currently status: {VerifyStatus}")

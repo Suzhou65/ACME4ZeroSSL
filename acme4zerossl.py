@@ -211,7 +211,7 @@ class Runtime():
                 FullFilePath = FolderPath / ValidationFilePath
             # Check folder inside webpage folder
             FullFilePath.parent.mkdir(parents=True,exist_ok=True)
-            # File content
+            # File content, empty string as fail-safe
             ChallengeTexts = VerifyRequestFile.get("content","")
             # Open File
             with FullFilePath.open("w",encoding="utf-8") as ChallengeFile:
@@ -326,7 +326,8 @@ class Telegram():
             with requests.Session() as MessageSender:
                 PostResponse = MessageSender.post(TelegramSendURL,json=MessageText,timeout=30)
             if PostResponse.status_code == 200:
-                pass
+                # Runtime printout
+                self.RtM.Message(TelegramMessage)
             elif PostResponse.status_code == 400:
                 a4zlog.warning(f"Telegram ChatID is empty, notifications will not be sent")
             else:
@@ -563,7 +564,7 @@ class ZeroSSL():
             AdditionalDomainCheck = VerifyRequest.get(self.L1,{}).get(self.L2,{}).get(self.AltName)
             AdditionalCheck = bool(AdditionalDomainCheck)
             # Certificate ID
-            VerifyCertificateID = VerifyRequest.get("id", None)
+            VerifyCertificateID = VerifyRequest.get("id",None)
             # Common Name CNAME
             CommonName_CNAME = VerifyRequest.get(self.L1,{}).get(self.L2,{}).get(self.CommonName,{}).get(self.CNAME,"")
             # Common Name VALUE
