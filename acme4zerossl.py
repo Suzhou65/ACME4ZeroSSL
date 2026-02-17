@@ -38,7 +38,7 @@ class Configuration():
         except Exception as ReadConfigError:
             a4zlog.exception(f"Unable reading configuration |Error: {ReadConfigError}")
             raise
-        # QC 2026A16
+        # QC 2026B11
 
 # Runtime package
 class Runtime():
@@ -87,7 +87,7 @@ class Runtime():
         # Error, unable printout runtime message
         except Exception as RuntimeMessagePrintError:
             a4zlog.warning(f"Unable printout runtime |{RuntimeMessagePrintError}")
-        # QC 2025K21
+        # QC 2026B11
 
     # Check certificate expires, default minimum is 14 days
     def ExpiresCheck(self,Minimum=(14)):
@@ -119,7 +119,7 @@ class Runtime():
         except Exception as ExpiresCheckError:
             a4zlog.warning(f"Unable check certificate expires, force renewed |Error: {ExpiresCheckError}")
             return None
-        # QC 2026A16
+        # QC 2026B11
 
     # Certificate Signing Request
     def CSRConfig(self):
@@ -159,7 +159,7 @@ class Runtime():
         except Exception as CSRConfigError:
             a4zlog.exception(f"Error occurred during phrasing CSR config |Error: {CSRConfigError}")
             return False
-        # QC 2026A19
+        # QC 2026B11
 
     # Create certificates signing request and PK
     def CreateCSR(self):
@@ -183,7 +183,7 @@ class Runtime():
             # Using OpenSSL generate CSR and PK
             CsrStatus = subprocess.Popen(OpensslCommand,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
             # Discard openssl command output
-            stdout, stderr = CsrStatus.communicate()
+            stdout,stderr = CsrStatus.communicate()
             # Check openssl command successful
             if CsrStatus.returncode == 0:
                 return OpensslCommand
@@ -194,7 +194,7 @@ class Runtime():
         except Exception as CreateCSRError:
             a4zlog.exception(f"Error occurred during create CSR file |Error: {CreateCSRError}")
             return False
-        # QC 2026A19
+        # QC 2026B11
 
     # Create and write ACME Challenge file
     def CreateValidationFile(self,VerifyRequestFile):
@@ -226,12 +226,12 @@ class Runtime():
                 else:
                     ChallengeFile.write(str(ChallengeTexts) + "\n")
             # Challenge file create notice
-            self.Message(f"Challenge has been created at: {FullFilePath}")
+            self.Message(f"Challenge file {FullFilePath} been created")
             return True
         except Exception as CreateValidationFileError:
             a4zlog.exception(f"Error occurred during create challenge file |Error: {CreateValidationFileError}")
             return False
-        # QC 2025A19
+        # QC 2026B11
 
     # Delete ACME Challenge file after verify
     def CleanValidationFile(self,VerifyRequestFile):
@@ -249,12 +249,13 @@ class Runtime():
             if ChallengeFileRemain.exists():
                 try:
                     ChallengeFileRemain.unlink()
+                    self.Message(f"Challenge file {ValidationFile} been deleted")
                 # File already delete
                 except FileNotFoundError:
                     pass
         except Exception as CleanValidationFileError:
             a4zlog.exception(f"Error occurred during delete challenge file |Error: {CleanValidationFileError}")
-        # QC 2026A19
+        # QC 2026B11
 
     # Install certificate to server folder, reload is optional
     def CertificateInstall(self,CertificateContent,ServerCommand=None):
@@ -282,7 +283,7 @@ class Runtime():
             if ServerCommand is not None:
                 ServerStatus = subprocess.Popen(ServerCommand,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
                 # Discard output
-                stdout, stderr = ServerStatus.communicate()
+                stdout,stderr = ServerStatus.communicate()
                 # Check if reboot command successful
                 if ServerStatus.returncode == 0:
                     return ServerCommand
@@ -295,7 +296,7 @@ class Runtime():
         except Exception as CertificateInstallError:
             a4zlog.exception(f"Error occurred during install certificate or reload/restart server |Error: {CertificateInstallError}")
             return False
-        # QC 2025K21
+        # QC 2026B11
 
 # Sending Telegram message
 class Telegram():
@@ -334,7 +335,7 @@ class Telegram():
                 a4zlog.warning(f"Unable sending notifications |HTTP Error: {PostResponse.status_code}")
         except Exception as Message2MeError:
             a4zlog.exception(f"Error occurred during sending notifications |Error: {Message2MeError}")
-        # QC 2026A29
+        # QC 2026B11
 
     # Get Telegram ChatID
     def GetChatID(self):
@@ -406,7 +407,7 @@ class Cloudflare():
         except Exception as VerifyCFTokenError:
             a4zlog.exception(f"Error occurred during verify Cloudflare API token |Error: {VerifyCFTokenError}")
             return False
-        # QC 2026A29
+        # QC 2026B11
 
     # Download all DNS records from Cloudflare
     def GetCFRecords(self,FileOutput=None):
@@ -437,7 +438,7 @@ class Cloudflare():
         except Exception as GetCFRecordsError:
             a4zlog.exception(f"Error occurred during download DNS records |Error: {GetCFRecordsError}")
             return False
-        # QC 2026A29
+        # QC 2026B11
 
     # Update CNAME records at Cloudflare
     def UpdateCFCNAME(self,UpdatePayload):
@@ -476,7 +477,7 @@ class Cloudflare():
         except Exception as UpdateCNAMEError:
             a4zlog.exception(f"Error occurred during update CNAME record |Error: {UpdateCNAMEError}")
             return False
-        # QC 2026A20
+        # QC 2026B11
 
 # ZeroSSL REST API package
 class ZeroSSL():
@@ -555,7 +556,7 @@ class ZeroSSL():
         except Exception as ErrorStatus:
             a4zlog.exception(f"Error occurred during request new certificate |Error: {ErrorStatus}")
             return False
-        # QC 2026A20
+        # QC 2026B11
 
     # Phrasing ZeroSSL verify JSON
     def ZeroSSLVerifyData(self,VerifyRequest,ValidationMethod="CNAME_CSR_HASH"):
@@ -611,7 +612,7 @@ class ZeroSSL():
         except Exception as VerifyDataPhrasingError:
             a4zlog.exception(f"Error occurred during phrasing ZeroSSL verify data |Error: {VerifyDataPhrasingError}")
             return False
-        # QC 2026A19, CNAME und HTTPS_FILE
+        # QC 2026B11, CNAME-PASS HTTPS_FILE-PENDING
 
     # Verification, when using CNAME and HTTP/HTTPS file verify
     def ZeroSSLVerification(self,CertificateID=None,ValidationMethod="CNAME_CSR_HASH"):
@@ -648,7 +649,7 @@ class ZeroSSL():
         except Exception as CAVerificationError:
             a4zlog.exception(f"Error occurred during verification |Error: {CAVerificationError}")
             return False
-        # QC 2026A19
+        # QC 2026B11
 
     # Download certificate from ZeroSSL
     def ZeroSSLDownloadCA(self,CertificateID=None):
@@ -686,7 +687,7 @@ class ZeroSSL():
         except Exception as DownloadCAError:
             a4zlog.exception(f"Error occurred during downloading |Error: {DownloadCAError}")
             return False
-        # QC 2026A20
+        # QC 2026B11
 
     # Cancel certificate from ZeroSSL
     def ZeroSSLCancelCA(self,CertificateID):
@@ -709,7 +710,7 @@ class ZeroSSL():
         except Exception as CancelCAError:
             a4zlog.exception(f"Error occurred during cancel certificate |Error:{CancelCAError}")
             return False
-        # QC 2026A20
+        # UNQC
 
     # Revoke certificate from ZeroSSL
     def ZeroSSLRevokeCA(self,CertificateID,RevokeReason=None):

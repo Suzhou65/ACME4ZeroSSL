@@ -3,14 +3,13 @@ import acme4zerossl as acme
 import logging
 from time import sleep
 from sys import exit
-
 # Config
 ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
+# Server reload or restart command
 ServerCommand  = None
-
 # Error handling
 FORMAT = "%(asctime)s |%(levelname)s |%(message)s"
-logging.basicConfig(level=logging.INFO,filename="error.acme4zerossl.log",filemode="a",format=FORMAT)
+logging.basicConfig(level=logging.INFO,filename="acme4zerossl.log",filemode="a",format=FORMAT)
 # Script
 def main(VerifyRetry,Interval):
     Rt = acme.Runtime(ConfigFilePath)
@@ -55,9 +54,11 @@ def main(VerifyRetry,Interval):
     # Verify passed (Under CNAME and file validation, pending_validation means verify successful)
     elif VerifyResult in ("pending_validation","issued"):
         Rt.Message(f"Verify successful, now downloading certificate...")
+        sleep(30)
         # Download certificates, adding retry and interval in case backlog certificate issuance
         for _ in range(VerifyRetry):
             CertificateContent = Zs.ZeroSSLDownloadCA(CertificateID)
+            # Successful download certificates
             if isinstance(CertificateContent,dict):
                 Rt.Message("Certificate has been downloaded.")
                 break
@@ -97,14 +98,15 @@ if __name__ == "__main__":
         # No need to renew
         else:
             Rt.Message(f"Certificate's validity date has {ExpiresDays} days left.")
-            logging.info("Certificate renewed check complete")
+            logging.info(f"Certificate check complete| {ExpiresDays} days left")
             exit(0)
     except KeyboardInterrupt:
-        logging.info("Manually interrupt")
+        logging.warning("Manually interrupt")
         exit(0)
     except Exception as RenewedError:
         logging.exception(f"Script error| {RenewedError}")
+        # Notify
         RenewedErrorMessage = str(RenewedError)
         Tg.Message2Me(RenewedErrorMessage)
         exit(1)
-# UNQC
+# QC 2026B11

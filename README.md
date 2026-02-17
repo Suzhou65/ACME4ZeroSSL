@@ -69,6 +69,7 @@ Using JSON format file storage configuration. Configuration file must include fo
    },
    "Certificate":{
       "Domains": ["www.example.com", "example.com"],
+      "ValidityDays": 90,
       "Country": "",
       "StateOrProvince": "",
       "Locality": "",
@@ -101,12 +102,14 @@ Configuration file must include following parameters:
 > **Cloudflare Zone ID**<br>
 > Storage `Cloudflare Zone ID` inside `ZoneID`.<br> 
 > `CNAME records ID` storage at `CNAMERecordsID` list.<br>
+```json
+"CNAMERecordsID": ["XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX","XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"]
+```
 >
-> If you only need ACME certification for a single domain name, simply keep only one DNS records ID inside `CNAMERecordsID` list.<br>
+> If you only need ACME certification for a single domain name, simply keep one ID inside `CNAMERecordsID` list.<br>
 ```json
 "CNAMERecordsID": ["XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"]
 ```
-
 > **ZeroSSL REST API Key**<br>
 > Storage `ZeroSSL Access Key` inside `ZeroSSLAPI`.<br>
 > Storage ZeroSSL certificate verify data as JSON file at `Cache`.<br>
@@ -154,8 +157,9 @@ Configuration file must include following parameters:
 > Files path for HTTP/HTTPS file challenge.<br>
 > Usually is your Apache/Nginx webpage folder.<br>
 ```json
-"HTMLFilePath": "/var/www/html/"
+"HTMLFilePath": "/var/www/html"
 ```
+> **Well-known URIs:** acme-challenge URI will automatically create by ACME script.
 
 ### Cloudflare API
 For using CNAME challenge function, you need to domain registered with Cloudflare, or choice Cloudflare as DNS hosting service.<br>
@@ -179,7 +183,7 @@ At this point chat channel wasn't created, so you can't find the `ChatID`. Runni
 You need to start the chat channel with that bot, i.e. say `Hello the world` to him. Then running `GetChatID`
 ```python
 import acme4zerossl
-ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
+ConfigFilePath = "/documents/script/acme4zerossl.config.json"
 Tg = acme4zerossl.Telegram(ConfigFilePath)
 Tg.GetChatID()
 ```
@@ -197,34 +201,44 @@ Function `CertificateInstall` support webpage server restart when certificate wa
 Rt.CertificateInstall(CertificateContent, ServerCommand)
 # Default is None
 ServerCommand = None
-# Apache
-ServerCommand = ['systemctl', 'reload', 'apache2']
-# Nginx
-ServerCommand = ['service', 'nginx', 'restart']
+# Apache2, using systemd
+ServerCommand = ['systemctl','reload','apache2.service']
+# Nginx, using systemd
+ServerCommand = ['systemctl','reload','nginx']
+# Nginx, using init
+ServerCommand = ['/etc/init.d/nginx','reload']
 ```
 
 ### Schedule
 Recommend using `systemd`.<br>
 > **systemd service file**<br>
-> Create service file `/etc/systemd/system/acme_cname.service` for systemd.<br>
+> Create service file `/etc/systemd/system/acme.service` for systemd.<br>
 
-> WorkingDirectory `/Documents/script` prevent absolute/relative path issue.<br>
+> WorkingDirectory `/documents/script` prevent absolute/relative path issue.<br>
 > ExecStart `/usr/bin/python3` depend on Python environment.<br>
-> Path `/Documents/script/script_cname.py` is acme script located.<br>
+> Path `/documents/script/script_cname.py` is acme script located.<br>
 ```conf
 [Unit]
-Description=ACME Script under CNAME mode
+Description=ACME Script
+# Wait till network available
 After=network-online.target
 Wants=network-online.target
 
 [Service]
+# Run once every call
 Type=oneshot
+# Root
 User=root
-WorkingDirectory=/Documents/script
-ExecStart=/usr/bin/python3 /Documents/script/script_cname.py
+# Script folder absolute path
+WorkingDirectory=/documents/script
+# Python environment (interpreter) and script located
+ExecStart=/usr/bin/python3 /documents/script/script_cname.py
+# Log output
+StandardOutput=journal
+StandardError=journal
 ```
 > **Timer file**<br>
-> Next is timer file `/etc/systemd/system/acme_cname.timer`.<br>
+> Next is timer file `/etc/systemd/system/acme.timer`.<br>
 > Following example running everyday 5:00 AM and 10 minutes after boot up.
 ```conf
 [Unit]
@@ -232,7 +246,14 @@ Description=Run ACME Script everyday
 
 [Timer]
 OnCalendar=*-*-* 05:00:00
+# Avoid skip cause by poweroff 
 Persistent=true
+# Service name
+Unit=acme.service
+# Adding randomized delay
+RandomizedDelaySec=10m
+# Avoid inaccuracy
+AccuracySec=1m
 
 [Install]
 WantedBy=timers.target
@@ -241,8 +262,8 @@ WantedBy=timers.target
 > Enable timer and clean cache.<br>
 ```bash
 # Enable and start the timer
-systemctl enable acme_cname.timer
-systemctl start acme_cname.timer
+systemctl enable acme.timer
+systemctl start acme.timer
 
 # Reload
 systemctl daemon-reload
@@ -292,120 +313,95 @@ Cf.GetCFRecords(FileOutput)
 > **Demonstration script**<br>
 > `script_cname.py` including Telegram BOTs notify and check validity date of certificate.<br>
 ```python
+# -*- coding: utf-8 -*-
 import acme4zerossl as acme
+import logging
 from time import sleep
 from sys import exit
-# Configuration file path
+# Config
 ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
+# Server reload or restart command
 ServerCommand  = None
+# Error handling
+FORMAT = "%(asctime)s |%(levelname)s |%(message)s"
+logging.basicConfig(level=logging.INFO,filename="acme4zerossl.log",filemode="a",format=FORMAT)
 # Script
-def main():
+def main(VerifyRetry,Interval):
+    # Load object
     Rt = acme.Runtime(ConfigFilePath)
     Cf = acme.Cloudflare(ConfigFilePath)
     Zs = acme.ZeroSSL(ConfigFilePath)
     # Create certificates signing request
     ResultCreateCSR = Rt.CreateCSR()
-    if isinstance(ResultCreateCSR, bool):
-        raise Exception()
-    elif isinstance(ResultCreateCSR, int):
-        pass
+    if not isinstance(ResultCreateCSR,list):
+        raise RuntimeError("Error occurred during Create CSR and Private key.")
     # Sending CSR
     VerifyRequest = Zs.ZeroSSLCreateCA()
-    # Function error
-    if isinstance(VerifyRequest, bool):
-        raise Exception()
-    # ZeroSSL REST API HTTP error
-    elif isinstance(VerifyRequest, int):
-        raise Exception()
+    if not isinstance(VerifyRequest,dict):
+        raise RuntimeError("Error occurred during request new certificate.")
     # Phrasing ZeroSSL verify
-    elif isinstance(VerifyRequest, dict):
-        VerifyData = Zs.ZeroSSLVerifyData(VerifyRequest, Mode="CNAME")
-    # Check verify data
-    if isinstance(VerifyData, bool):
-        raise Exception()
-    elif isinstance(VerifyData, dict):
-        pass
-    # Update CNAME via Cloudflare API
-    if ("additional_domains") in VerifyData:
-        UpdatePayloads = [
-            VerifyData.get('common_name'),
-            VerifyData.get('additional_domains')]
-    elif ("additional_domains") not in VerifyData:
-        UpdatePayloads = [
-            VerifyData.get('common_name')]
-    # Update Cloudflare CNAME records
+    VerifyData = Zs.ZeroSSLVerifyData(VerifyRequest)
+    if not isinstance(VerifyData,dict):
+        raise RuntimeError("Error occurred during phrasing ZeroSSL verify data.")
+    CertificateID = VerifyData.get("id",None)
+    if CertificateID is None:
+        raise RuntimeError("Certificate hash is empty.")
+    # CNAME Update data 
+    UpdatePayloads = [VerifyData['common_name']]
+    AdditionalDomains = VerifyData.get('additional_domains')
+    if AdditionalDomains:
+        UpdatePayloads.append(AdditionalDomains)
+    # Update Cloudflare hsoting CNAME records
     for UpdatePayload in UpdatePayloads:
         ResultUpdateCFCNAME = Cf.UpdateCFCNAME(UpdatePayload)
-        # Function error
-        if isinstance(ResultUpdateCFCNAME, bool):
-            raise Exception()
-        # Cloudflare API HTTP error
-        elif isinstance(ResultUpdateCFCNAME, int):
-            raise Exception()
         # Check CNAME update result
-        elif isinstance(ResultUpdateCFCNAME, dict):
-            ResultUpdateResult = ResultUpdateCFCNAME.get("success")
-            if ResultUpdateResult == True:
-                sleep(5)
-            elif ResultUpdateResult == False:
-                raise Exception()
-            else:
-                raise Exception()
+        if not isinstance(ResultUpdateCFCNAME,dict):
+            raise RuntimeError("Error occurred during connect Cloudflare update CNAME.")
         else:
-            raise Exception()
-    # Wait DNS records update and active
-    sleep(30)
-    # Verify CNAME challenge
-    CertificateID = VerifyData.get("id","")
-    VerifyResult = Zs.ZeroSSLVerification(CertificateID, ValidationMethod="CNAME_CSR_HASH")
-    # Function error
-    if isinstance(VerifyResult, bool):
-        raise Exception()
-    # ZeroSSL REST API HTTP error
-    elif isinstance(VerifyResult, int):
-        raise Exception()
-    # Possible errors respon
-    elif isinstance(VerifyResult, dict) and ("error") in VerifyResult:
-        VerifyErrorStatus = VerifyResult.get("error",{}).get("type","Unknown Error")
-        raise Exception (VerifyErrorStatus)
-    # Check verify status
-    elif isinstance(VerifyResult, dict) and ("status") in VerifyResult:
-        VerifyStatus = VerifyResult.get("status")
-        # Verify successful, wait issued
-        if VerifyStatus == ("draft"):
-            raise Exception()
-        elif VerifyStatus == ("pending_validation"):
-            sleep(30)
-        # Verify successful and been issued
-        elif VerifyStatus == ("issued"):
             sleep(5)
-        # Undefined error
+    # Wait DNS records update and active
+    sleep(60)
+    # Verify CNAME challenge
+    VerifyResult = Zs.ZeroSSLVerification(CertificateID,ValidationMethod="CNAME_CSR_HASH")
+    if not isinstance(VerifyResult,str):
+        raise RuntimeError("Error occurred during verification.")
+    # Check verify status
+    if VerifyResult == "draft":
+        raise RuntimeError("Not verified yet.")
+    # Verify passed (Under CNAME and file validation, pending_validation means verify successful)
+    elif VerifyResult in ("pending_validation","issued"):
+        sleep(30)
+        # Download certificates, adding retry and interval in case backlog certificate issuance
+        for _ in range(VerifyRetry):
+            CertificateContent = Zs.ZeroSSLDownloadCA(CertificateID)
+            # Successful download certificates
+            if isinstance(CertificateContent,dict):
+                break
+            sleep(Interval)
         else:
-            raise Exception()
-    # Download certificates
-    CertificateContent = Zs.ZeroSSLDownloadCA(CertificateID)
-    if isinstance(CertificateContent, bool):
-        raise Exception()
-    elif isinstance(CertificateContent, str):
-        raise Exception(CertificateContent)
-    elif isinstance(CertificateContent, dict) and ("certificate.crt") in CertificateContent:
-        sleep(5)
-    # Install certificate to server folder
-    ResultCheck = Rt.CertificateInstall(CertificateContent, ServerCommand)
-    if isinstance(ResultCheck, bool):
-        raise Exception()
-    elif isinstance(ResultCheck, int):
-        pass
-    elif isinstance(ResultCheck, (list,str)):
-        pass
+            raise RuntimeError(f"Unable download certificate.")
+    # Undefined error
     else:
-        raise Exception ()
+        raise RuntimeError(f"Unable to check verification status, currently verification status: {VerifyResult}")
+    # Install certificate to server folder
+    ResultCheck = Rt.CertificateInstall(CertificateContent,ServerCommand)
+    if ResultCheck is False:
+        raise RuntimeError("Error occurred during certificate install. You may need to download and install manually.")
+    else:
+        return
 # Runtime
-try:
-    main()
-    exit(0)
-except Exception:
-    exit(1)
+if __name__ == "__main__":
+    try:
+        main(10,60)
+        logging.info("Certificate has been renewed")
+        exit(0)
+    # Ctrl+C manually stop
+    except KeyboardInterrupt:
+        logging.warning("Manually interrupt")
+        exit(0)
+    except Exception as RenewedError:
+        logging.exception(f"Script error| {RenewedError}")
+        exit(1)
 ```
 
 ### Verify with HTTPS file challenge
@@ -414,113 +410,94 @@ except Exception:
 ```python
 # -*- coding: utf-8 -*-
 import acme4zerossl as acme
+import logging
 from time import sleep
 from sys import exit
-
 # Config
 ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
+# Server reload or restart command
 ServerCommand  = None
-
+# Error handling
+FORMAT = "%(asctime)s |%(levelname)s |%(message)s"
+logging.basicConfig(level=logging.INFO,filename="acme4zerossl.log",filemode="a",format=FORMAT)
 # Script
-def main():
+def main(VerifyRetry,Interval):
     Rt = acme.Runtime(ConfigFilePath)
     Zs = acme.ZeroSSL(ConfigFilePath)
     # Create certificates signing request
     ResultCreateCSR = Rt.CreateCSR()
-    if isinstance(ResultCreateCSR, bool):
-        raise Exception()
-    elif isinstance(ResultCreateCSR, int):
-        pass
+    if not isinstance(ResultCreateCSR,list):
+        raise RuntimeError("Error occurred during Create CSR and Private key.")
     # Sending CSR
     VerifyRequest = Zs.ZeroSSLCreateCA()
-    # Function error
-    if isinstance(VerifyRequest, bool):
-        raise Exception()
-    # ZeroSSL REST API HTTP error
-    elif isinstance(VerifyRequest, int):
-        raise Exception()
+    if not isinstance(VerifyRequest,dict):
+        raise RuntimeError("Error occurred during request new certificate.")
     # Phrasing ZeroSSL verify
-    elif isinstance(VerifyRequest, dict):
-        VerifyData = Zs.ZeroSSLVerifyData(VerifyRequest, Mode="FILE")
-    # Check verify data
-    if isinstance(VerifyData, bool):
-        raise Exception()
-    elif isinstance(VerifyData, dict):
-        pass
+    VerifyData = Zs.ZeroSSLVerifyData(VerifyRequest,ValidationMethod="HTTPS_CSR_HASH")
+    if not isinstance(VerifyData,dict):
+        raise RuntimeError("Error occurred during phrasing ZeroSSL verify data.")
+    CertificateID = VerifyData.get("id",None)
+    if CertificateID is None:
+        raise RuntimeError("Certificate hash is empty")
     # Validation file path and content
-    if ("additional_domains") in VerifyData:
-        ValidationFiles = [
-            VerifyData.get('common_name'),
-            VerifyData.get('additional_domains')]
-    elif ("additional_domains") not in VerifyData:
-        ValidationFiles = [
-            VerifyData.get('common_name')]
+    ValidationFiles = [VerifyData['common_name']]
+    AdditionalDomains = VerifyData.get("additional_domains")
+    if AdditionalDomains:
+        ValidationFiles.append(AdditionalDomains)
     # Create validation file
     for ValidationFile in ValidationFiles:
-        Rt.CreateValidationFile(ValidationFile)
-    # Wait for web server cahce
-    sleep(15)
+        CreateValidationFileStatus = Rt.CreateValidationFile(ValidationFile)
+        if CreateValidationFileStatus is not True:
+            raise RuntimeError("Error occurred during create validation file")
+    # Cahce
+    sleep(60)
     # Verify file challenge
-    CertificateID = VerifyData.get("id")
-    VerifyResult = Zs.ZeroSSLVerification(CertificateID, ValidationMethod="HTTPS_CSR_HASH")
-    # Function error
-    if isinstance(VerifyResult, bool):
-        raise Exception()
-    # ZeroSSL REST API HTTP error
-    elif isinstance(VerifyResult, int):
-        raise Exception()
-    # Possible errors respon
-    elif isinstance(VerifyResult, dict) and ("error") in VerifyResult:
-        VerifyErrorStatus = VerifyResult.get("error",{})
-        ErrorType = VerifyErrorStatus.get("type", "Unknown Error")
-        raise Exception (ErrorType)
+    VerifyResult = Zs.ZeroSSLVerification(CertificateID,ValidationMethod="HTTPS_CSR_HASH")
+    if not isinstance(VerifyResult,str):
+        raise RuntimeError("Error occurred during file verification.")
     # Check verify status
-    elif isinstance(VerifyResult, dict) and ("status") in VerifyResult:
-        VerifyStatus = VerifyResult.get("status")
-        # Verify successful, wait issued
-        if VerifyStatus == ("draft"):
-            raise Exception()
-        elif VerifyStatus == ("pending_validation"):
-            sleep(30)
-        # Verify successful and been issued
-        elif VerifyStatus == ("issued"):
-            sleep(5)
-        # Undefined error
+    if VerifyResult == "draft":
+        raise RuntimeError("Not verified yet.")
+    # Verify passed (Under CNAME and file validation, pending_validation means verify successful)
+    elif VerifyResult in ("pending_validation","issued"):
+        sleep(30)
+        # Download certificates, adding retry and interval in case backlog certificate issuance
+        for _ in range(VerifyRetry):
+            CertificateContent = Zs.ZeroSSLDownloadCA(CertificateID)
+            # Successful download certificates
+            if isinstance(CertificateContent,dict):
+                break
+            sleep(Interval)
         else:
-            raise Exception()
+            raise RuntimeError(f"Unable download certificate.")
+    # Undefined error
+    else:
+        raise RuntimeError(f"Unable to check verification status, undefined status: {VerifyResult}")
     # Delete validation file
     for ValidationFile in ValidationFiles:
         Rt.CleanValidationFile(ValidationFile)
-    # Download certificates
-    CertificateContent = Zs.ZeroSSLDownloadCA(CertificateID)
-    if isinstance(CertificateContent, bool):
-        raise Exception()
-    elif isinstance(CertificateContent, str):
-        raise Exception(CertificateContent)
-    elif isinstance(CertificateContent, dict) and ("certificate.crt") in CertificateContent:
-        sleep(5)
     # Install certificate to server folder
-    ResultCheck = Rt.CertificateInstall(CertificateContent, ServerCommand)
-    ExpiresDate = VerifyResult.get("expires")
-    if isinstance(ResultCheck, bool):
-        raise Exception()
-    elif isinstance(ResultCheck, int):
-        pass
-    elif isinstance(ResultCheck, (list,str)):
-        pass
+    ResultCheck = Rt.CertificateInstall(CertificateContent,ServerCommand)
+    if ResultCheck is False:
+        raise RuntimeError("Error occurred during certificate install. You may need to download and install manually.")
     else:
-        raise Exception ()
+        return
 # Runtime
-try:
-    main()
-    exit(0)
-except Exception:
-    exit(1)
+if __name__ == "__main__":
+    try:
+        main(10,60)
+        logging.info("Certificate has been renewed")
+        exit(0)
+    # Ctrl+C manually stop
+    except KeyboardInterrupt:
+        logging.warning("Manually interrupt")
+        exit(0)
+    except Exception as RenewedError:
+        logging.exception(f"Script error| {RenewedError}")
+        exit(1)
 ```
 
 ### Download certificate
-> **Demonstration script**<br>
-> `script_download.py`.<br>
 ```python
 import acme4zerossl as acme
 from sys import exit
@@ -528,23 +505,19 @@ from sys import exit
 # Config
 ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
 # Script
-def DownloadScript():
+def DownloadScript(CertificateID):
     Rt = acme.Runtime(ConfigFilePath)
     Zs = acme.ZeroSSL(ConfigFilePath)
-    # Input certificate hash manually
-    CertificateID = input("Please input certificate ID (hash), or press ENTER using cache file: ")
     # Download certificate payload
     CertificateContent = Zs.ZeroSSLDownloadCA(CertificateID or None)
     # Check
-    if isinstance(CertificateContent, bool):
-        raise Exception()
-    elif isinstance(CertificateContent, str):
+    if not isinstance(CertificateContent, dict):
         raise Exception()
     # Download certificate and save to folder
     elif isinstance(CertificateContent, dict) and ("certificate.crt") in CertificateContent:
         pass
     ResultCheck = Rt.CertificateInstall(CertificateContent)
-    if isinstance(ResultCheck, bool):
+    if isinstance is False:
         raise Exception()
     elif isinstance(ResultCheck, int):
         Rt.Message("Certificate been downloaded to folder. You may need to restart server manually.")
@@ -552,7 +525,9 @@ def DownloadScript():
         Rt.Message(f"Certificate been downloaded and server has reload or restart.")
 # Runtime
 try:
-    DownloadScript()
+    # Input certificate hash manually
+    CertificateID = input("Please input certificate ID (hash), or press ENTER using cache file: ")
+    DownloadScript(CertificateID)
     exit(0)
 except Exception:
     exit(1)
@@ -571,19 +546,13 @@ from sys import exit
 # Config
 ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
 # Script
-def CancelScript():
+def CancelScript(CertificateID):
     Rt = acme.Runtime(ConfigFilePath)
     Zs = acme.ZeroSSL(ConfigFilePath)
-    # Input certificate hash manually
-    CertificateID = input("Please input certificate ID (hash): ")
     # Cancel certificate
     CancelStatus = Zs.ZeroSSLCancelCA(CertificateID)
     # Status check, Error
-    if isinstance(CancelStatus, bool):
-        raise Exception()
-    # ZeroSSL REST API HTTP error
-    elif isinstance(CancelStatus, int):
-        raise Exception()
+    if not isinstance(CancelStatus, dict):
     # Standard response, check status code
     elif isinstance(CancelStatus, dict):
         CancelResult = CancelStatus.get("success",{})
@@ -597,7 +566,9 @@ def CancelScript():
         raise Exception()
 # Runtime
 try:
-    CancelScript()
+    # Input certificate hash manually
+    CertificateID = input("Please input certificate ID (hash): ")
+    CancelScript(CertificateID)
     exit(0)
 except Exception:
     exit(1)
@@ -608,8 +579,6 @@ except Exception:
 > ZeroSSL REST API require reason for certificate revoke (Optional).
 > Only certificates with status `issued` can be revoked. If a certificate has already been successfully revoked you will get a success response nevertheless.
 
-> **Demonstration script**<br>
-> Demonstration script named `script_revoke.py`.<br>
 ```python
 import acme4zerossl as acme
 from sys import exit
@@ -617,17 +586,13 @@ from sys import exit
 # Config
 ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
 # Script
-def RevokeScript():
+def RevokeScript(CertificateID):
     Rt = acme.Runtime(ConfigFilePath)
     Revoke = acme.ZeroSSL(ConfigFilePath)
-    # Input certificate hash manually
-    CertificateID = input("Please input certificate ID (hash): ")
     # Revoke certificate
     RevokeStatus = Revoke.ZeroSSLRevokeCA(CertificateID)
     # Status check
-    if isinstance(RevokeStatus, bool):
-        raise Exception()
-    elif isinstance(RevokeStatus, int):
+    if not isinstance(RevokeStatus, dict):
         raise Exception()
     elif isinstance(RevokeStatus, dict) and ("success") in RevokeStatus:
         RevokeResult = RevokeStatus.get("success","")
@@ -641,7 +606,9 @@ def RevokeScript():
         raise Exception()
 # Runtime
 try:
-    RevokeScript()
+    # Input certificate hash manually
+    CertificateID = input("Please input certificate ID (hash): ")
+    RevokeScript(CertificateID)
     exit(0)
 except Exception:
     exit(1)
