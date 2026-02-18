@@ -189,7 +189,7 @@ class Runtime():
                 return OpensslCommand
             else:
                 # Logging stderr for debug
-                a4zlog.warning(f"Unable running OpenSSL command | Output:{stdout} |Error:{stderr}")
+                a4zlog.warning(f"Unable running OpenSSL command |Output:{stdout} |Error:{stderr}")
                 return False
         except Exception as CreateCSRError:
             a4zlog.exception(f"Error occurred during create CSR file |Error: {CreateCSRError}")
@@ -710,7 +710,7 @@ class ZeroSSL():
         except Exception as CancelCAError:
             a4zlog.exception(f"Error occurred during cancel certificate |Error:{CancelCAError}")
             return False
-        # UNQC
+        # QC 2026B18
 
     # Revoke certificate from ZeroSSL
     def ZeroSSLRevokeCA(self,CertificateID,RevokeReason=None):

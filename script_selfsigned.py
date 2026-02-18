@@ -4,10 +4,9 @@ from pathlib import Path
 import requests
 import subprocess
 from sys import exit
-
 # Error handling
 FORMAT = "%(asctime)s |%(levelname)s |%(message)s"
-logging.basicConfig(level=logging.WARNING, filename="error.acme4zerossl.log", filemode="a", format=FORMAT)
+logging.basicConfig(level=logging.INFO,filename="selfsign.log",filemode="a",format=FORMAT)
 
 # Signing certificate
 class SelfSignedCertificate():
@@ -20,7 +19,7 @@ class SelfSignedCertificate():
         self.Country      = "JP"
         self.State        = "Tokyo Metropolis"
         self.Locality     = "Toshima"
-        self.Organization = "Tsukinomori Girls' Academy"
+        self.Organization = "Tsukinomori Girl's Academy"
         self.Unit         = "Concert Band Club"
         self.CSRConfig    = "selfsigned_certificate.conf"
         # CSR config path
@@ -32,11 +31,10 @@ class SelfSignedCertificate():
         self.Certificate  = "selfsigned_certificate.crt"
         # Server command
         self.WebServer    = None
-
     # Check IP address
     def LocalAddressCheck4(self):
         try:
-            with requests.get(self.IpIfy4, timeout=30) as AddressCheck4:
+            with requests.get(self.IpIfy4,timeout=30) as AddressCheck4:
                 if AddressCheck4.status_code == 200:
                     AddressCheck4JSON = AddressCheck4.json()
                     return AddressCheck4JSON.get("ip") or None
@@ -48,7 +46,7 @@ class SelfSignedCertificate():
             return None
     def LocalAddressCheck6(self):
         try:
-            with requests.get(self.IpIfy6, timeout=30) as AddressCheck6:
+            with requests.get(self.IpIfy6,timeout=30) as AddressCheck6:
                 if AddressCheck6.status_code == 200:
                     AddressCheck6JSON = AddressCheck6.json()
                     return AddressCheck6JSON.get("ip") or None
@@ -60,7 +58,7 @@ class SelfSignedCertificate():
             return None
 
     # Certificate Signing Request Config
-    def CreateCSR(self, Address4, Address6):
+    def CreateCSR(self,Address4,Address6):
         try:
             CSRConfig4 = f"IP.1 = {Address4}" if isinstance(Address4,str) and Address4.strip() else ""
             CSRConfig6 = f"IP.2 = {Address6}" if isinstance(Address6,str) and Address6.strip() else ""
@@ -82,7 +80,7 @@ class SelfSignedCertificate():
                 "subjectAltName = @alt_names",
                 "[alt_names]",
                 "DNS.1 = localhost",
-                CSRConfig4, CSRConfig6,
+                CSRConfig4,CSRConfig6,
                 # DistinguishedInfo
                 "[req_distinguished_name]",
                 f"countryName = {self.Country}",
@@ -93,9 +91,9 @@ class SelfSignedCertificate():
                 "commonName = localhost"]
             # CSR config
             CSRConfigFile = self.ConfigFolder / self.CSRConfig
-            with CSRConfigFile.open("w", encoding="utf-8") as CSRSignConfig:
+            with CSRConfigFile.open("w",encoding="utf-8") as CSRSignConfig:
                 # Drop empty configuration
-                for CSRConfigLine in filter(None, CSRConfigContents):
+                for CSRConfigLine in filter(None,CSRConfigContents):
                     CSRSignConfig.write(CSRConfigLine + "\n")
         except Exception as CreateCSRError:
             raise RuntimeError(f"Unable create CSR Configuration file |{CreateCSRError}")
@@ -109,13 +107,13 @@ class SelfSignedCertificate():
         # Certificate path
         if self.CertFolder is None or not str(self.CertFolder).strip():
             CertificatesDIR = self.ConfigFolder
-        elif isinstance(self.CertFolder, str):
+        elif isinstance(self.CertFolder,str):
             CertificatesDIR = Path(self.CertFolder)
-        elif isinstance(self.CertFolder, Path):
+        elif isinstance(self.CertFolder,Path):
             CertificatesDIR = self.CertFolder
         else:
             raise RuntimeError("CSR configuration file path error")
-        CertificatesDIR.mkdir(parents=True, exist_ok=True)
+        CertificatesDIR.mkdir(parents=True,exist_ok=True)
         KeyoutFileStr      = str(CertificatesDIR / self.PrivateKey)
         CertificateFileStr = str(CertificatesDIR / self.Certificate)
         CSRConfigFileStr   = str(CSRConfigFile)
@@ -126,10 +124,10 @@ class SelfSignedCertificate():
                           "-extensions","x509_v3_req"]
         # Generate certificate
         try:
-            OpenSSLStatus = subprocess.Popen(OpensslCommand, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            stdout, stderr = OpenSSLStatus.communicate()
+            OpenSSLStatus = subprocess.Popen(OpensslCommand,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+            stdout,stderr = OpenSSLStatus.communicate()
             if OpenSSLStatus.returncode != 0:
-                raise RuntimeError(f"Error occurred during certificate and private key |{stdout} |{stderr}")
+                raise RuntimeError(f"Error occurred during certificate and private key |Output:{stdout} |Error:{stderr}")
         except Exception as CertificateSigningRequestError:
             logging.exception(CertificateSigningRequestError)
             raise RuntimeError(f"Unbale create certificate and private key |Error{CertificateSigningRequestError}")
@@ -142,7 +140,7 @@ class SelfSignedCertificate():
                 stdout, stderr = ServerStatus.communicate()
                 # Check if reboot command successful
                 if ServerStatus.returncode != 0:
-                    raise RuntimeError(f"Error occurred during server reload/restart |{stdout} |{stderr}")
+                    raise RuntimeError(f"Error occurred during server reload/restart |Output:{stdout} |Error:{stderr}")
             except Exception as ServerReloadError:
                 raise RuntimeError(f"Error occurred during server reload/restart |{ServerReloadError}")
 # Runtime
@@ -152,8 +150,9 @@ try:
     Address6 = SelfSignCa.LocalAddressCheck6()
     SelfSignCa.CreateCSR(Address4,Address6)
     SelfSignCa.CertificateSigning()
+    logging.info("Successful create self-signed certificate")
     exit(0)
 except Exception as RunTimeError:
-    logging.warning(RunTimeError)
+    logging.warning(f"Script error |{RunTimeError}")
     exit(1)
-# QC 2026A20
+# QC 2026B18

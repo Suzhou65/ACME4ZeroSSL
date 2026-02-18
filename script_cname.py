@@ -101,15 +101,15 @@ if __name__ == "__main__":
         # No need to renew
         else:
             Rt.Message(f"Certificate's validity date has {ExpiresDays} days left.")
-            logging.info(f"Certificate check complete| {ExpiresDays} days left")
+            logging.info(f"Certificate check complete |{ExpiresDays} days left")
             exit(0)
     except KeyboardInterrupt:
         logging.warning("Manually interrupt")
         exit(0)
     except Exception as RenewedError:
-        logging.exception(f"Script error| {RenewedError}")
+        logging.exception(f"Script error |{RenewedError}")
         # Notify
         RenewedErrorMessage = str(RenewedError)
         Tg.Message2Me(RenewedErrorMessage)
         exit(1)
-# QC 2026B11
+# QC 2026B18

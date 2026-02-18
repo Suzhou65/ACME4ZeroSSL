@@ -26,6 +26,7 @@ Python script for renew certificate from ZeroSSL.
     + [Download certificate](#download-certificate)
     + [Cancel certificate](#cancel-certificate)
     + [Revoke certificate](#revoke-certificate)
+  * [Self-signed certificate](#self-signed-certificate)
   * [Dependencies](#dependencies)
   * [License](#license)
   * [Resources](#resources)
@@ -219,7 +220,7 @@ Recommend using `systemd`.<br>
 > Path `/documents/script/script_cname.py` is acme script located.<br>
 ```conf
 [Unit]
-Description=ACME Script
+Description=ACME script
 # Wait till network available
 After=network-online.target
 Wants=network-online.target
@@ -239,10 +240,10 @@ StandardError=journal
 ```
 > **Timer file**<br>
 > Next is timer file `/etc/systemd/system/acme.timer`.<br>
-> Following example running everyday 5:00 AM and 10 minutes after boot up.
+> Following example running everyday 5:00 AM and 10 minutes after boot up.<br>
 ```conf
 [Unit]
-Description=Run ACME Script everyday
+Description=Run ACME script everyday
 
 [Timer]
 OnCalendar=*-*-* 05:00:00
@@ -259,8 +260,8 @@ AccuracySec=1m
 WantedBy=timers.target
 ```
 > **Enable service**<br>
-> Enable timer and clean cache.<br>
-```bash
+> Enable systemd timer and clean cache.<br>
+```shell
 # Enable and start the timer
 systemctl enable acme.timer
 systemctl start acme.timer
@@ -290,7 +291,7 @@ Cf.VerifyCFToken()
 > Show result's value as string only.<br>
 > Enable fully result by using `DisplayVerifyResult`<br>
 ```python
-Cf.VerifyCFToken(DisplayVerifyResult = True)
+Cf.VerifyCFToken(DisplayVerifyResult=True)
 ```
 
 ### Asking CNAME Records ID hosing on Cloudflare
@@ -499,17 +500,17 @@ if __name__ == "__main__":
 
 ### Download certificate
 ```python
+# -*- coding: utf-8 -*-
 import acme4zerossl as acme
 from sys import exit
-
 # Config
-ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
+ConfigFilePath = "/documents/script/acme4zerossl.config.json"
 # Script
 def DownloadScript(CertificateID):
     Rt = acme.Runtime(ConfigFilePath)
-    Zs = acme.ZeroSSL(ConfigFilePath)
+    Download = acme.ZeroSSL(ConfigFilePath)
     # Download certificate payload
-    CertificateContent = Zs.ZeroSSLDownloadCA(CertificateID or None)
+    CertificateContent = Download.ZeroSSLDownloadCA(CertificateID or None)
     # Check
     if not isinstance(CertificateContent, dict):
         raise Exception()
@@ -534,23 +535,20 @@ except Exception:
 ```
 
 ### Cancel certificate<br>
-> Only certificates with status draft or `pending_validation` can be cancelled.<br>
+> Only certificates with status `draft` or `pending_validation` can be cancelled.<br>
 > After verification, the certificates `cannot been cancelled`.<br>
-
-> **Demonstration script**<br>
-> Demonstration script named `script_cancel.py`.<br>
 ```python
+# -*- coding: utf-8 -*-
 import acme4zerossl as acme
 from sys import exit
-
 # Config
-ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
+ConfigFilePath = "/documents/script/acme4zerossl.config.json"
 # Script
 def CancelScript(CertificateID):
     Rt = acme.Runtime(ConfigFilePath)
-    Zs = acme.ZeroSSL(ConfigFilePath)
+    Cancel = acme.ZeroSSL(ConfigFilePath)
     # Cancel certificate
-    CancelStatus = Zs.ZeroSSLCancelCA(CertificateID)
+    CancelStatus = Cancel.ZeroSSLCancelCA(CertificateID)
     # Status check, Error
     if not isinstance(CancelStatus, dict):
     # Standard response, check status code
@@ -575,16 +573,15 @@ except Exception:
 ```
 
 ### Revoke certificate
-> **Note**  
-> ZeroSSL REST API require reason for certificate revoke (Optional).
-> Only certificates with status `issued` can be revoked. If a certificate has already been successfully revoked you will get a success response nevertheless.
-
+> **Note**<br>
+> ZeroSSL REST API require reason for certificate revoke (Optional).<br>
+> Only certificates with status `issued` can be revoked. If a certificate has already been successfully revoked you will get a success response nevertheless.<br>
 ```python
+# -*- coding: utf-8 -*-
 import acme4zerossl as acme
 from sys import exit
-
 # Config
-ConfigFilePath = "/Documents/script/acme4zerossl.config.json"
+ConfigFilePath = "/documents/script/acme4zerossl.config.json"
 # Script
 def RevokeScript(CertificateID):
     Rt = acme.Runtime(ConfigFilePath)
@@ -613,10 +610,41 @@ try:
 except Exception:
     exit(1)
 ```
+## Self-signed certificate
+Using self-signed certificate prevent IP connecting leak domain certificate.<br>
+> **Demonstration script**<br>
+> stand alone, functionable `script_selfsigned.py`.
+
+> **CSR config:** authority configuration at line 18 to 24.<br>
+> **Certificate name and folder path:** configuration at line 27 to 31.<br>
+> **Server command:** at line 33, same as ACME script.
+```python
+# Configuration
+def __init__(self):
+    self.IpIfy4 = "https://api.ipify.org?format=json"
+    self.IpIfy6 = "https://api64.ipify.org/?format=json"
+    # CSR config
+    self.Days         = 47
+    self.Country      = "JP"
+    self.State        = "Tokyo Metropolis"
+    self.Locality     = "Toshima"
+    self.Organization = "Tsukinomori Girls' Academy"
+    self.Unit         = "Concert Band Club"
+    self.CSRConfig    = "selfsigned_certificate.conf"
+    # CSR config path
+    self.ConfigFolder = Path.cwd()
+    # Certificate folder path, None as default path
+    self.CertFolder   = None
+    # Certificate and private key name
+    self.PrivateKey   = "selfsigned_certificate.key"
+    self.Certificate  = "selfsigned_certificate.crt"
+    # Server command
+    self.WebServer    = None
+```
 
 ## Dependencies
 ### Python version
-Testing passed on above Python version:
+Testing passed on above Python version:<br>
 + 3.12.11
 + 3.9.6
 + 3.9.2
