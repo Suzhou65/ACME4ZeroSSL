@@ -240,7 +240,7 @@ StandardError=journal
 ```
 > **Timer file**<br>
 > Next is timer file `/etc/systemd/system/acme.timer`.<br>
-> Following example running everyday 5:00 AM and 10 minutes after boot up.<br>
+> Following example running everyday 5:00 AM and 10 minutes after boot up and network available.<br>
 ```conf
 [Unit]
 Description=Run ACME script everyday
@@ -266,7 +266,7 @@ WantedBy=timers.target
 systemctl enable acme.timer
 systemctl start acme.timer
 
-# Reload
+# Reload systemd
 systemctl daemon-reload
 ```
 
@@ -513,13 +513,13 @@ def DownloadScript(CertificateID):
     CertificateContent = Download.ZeroSSLDownloadCA(CertificateID or None)
     # Check
     if not isinstance(CertificateContent, dict):
-        raise Exception()
+        raise RuntimeError("Unable download certificate")
     # Download certificate and save to folder
     elif isinstance(CertificateContent, dict) and ("certificate.crt") in CertificateContent:
         pass
     ResultCheck = Rt.CertificateInstall(CertificateContent)
     if isinstance is False:
-        raise Exception()
+        raise RuntimeError("Error occurred during certificate install")
     elif isinstance(ResultCheck, int):
         Rt.Message("Certificate been downloaded to folder. You may need to restart server manually.")
     elif isinstance(ResultCheck, (list,str)):
@@ -550,25 +550,24 @@ def CancelScript(CertificateID):
     # Cancel certificate
     CancelStatus = Cancel.ZeroSSLCancelCA(CertificateID)
     # Status check, Error
-    if not isinstance(CancelStatus, dict):
+    if not isinstance(CancelStatus,dict):
     # Standard response, check status code
-    elif isinstance(CancelStatus, dict):
-        CancelResult = CancelStatus.get("success",{})
+    elif isinstance(CancelStatus,dict):
+        CancelResult = CancelStatus.get("success")
         if CancelResult == 1:
             Rt.Message(f"Certificate ID: {CertificateID} has been cancelled.")
-        elif CancelResult == 0:
-            Rt.Message("ZeroSSL REST API request successful, however unable cancel certificate.")
         else:
-            raise Exception()
+            raise RuntimeError("Unable cancel certificate")
     else:
-        raise Exception()
+        raise RuntimeError("Error occurred during cancel certificate")
 # Runtime
 try:
     # Input certificate hash manually
     CertificateID = input("Please input certificate ID (hash): ")
     CancelScript(CertificateID)
     exit(0)
-except Exception:
+except Exception as ScriptError:
+    print(ScriptError)
     exit(1)
 ```
 
@@ -589,62 +588,57 @@ def RevokeScript(CertificateID):
     # Revoke certificate
     RevokeStatus = Revoke.ZeroSSLRevokeCA(CertificateID)
     # Status check
-    if not isinstance(RevokeStatus, dict):
+    if not isinstance(RevokeStatus,dict):
         raise Exception()
-    elif isinstance(RevokeStatus, dict) and ("success") in RevokeStatus:
-        RevokeResult = RevokeStatus.get("success","")
+    elif isinstance(RevokeStatus,dict):
+        RevokeResult = RevokeStatus.get("success")
         if RevokeResult == 1:
             Rt.Message(f"Certificate ID: {CertificateID} has been revoked.")
-        elif RevokeResult == 0:
-            Rt.Message("ZeroSSL REST API request successful, however unable revoke certificate.")
         else:
-            raise Exception()
+            raise RuntimeError("Unable revoke certificate")
     else:
-        raise Exception()
+        raise RuntimeError("Error occurred during revoke certificate")
 # Runtime
 try:
     # Input certificate hash manually
     CertificateID = input("Please input certificate ID (hash): ")
     RevokeScript(CertificateID)
     exit(0)
-except Exception:
+except Exception as ScriptError:
+    print(ScriptError)
     exit(1)
 ```
-## Self-signed certificate
-Using self-signed certificate prevent IP connecting leak domain certificate.<br>
-> **Demonstration script**<br>
-> stand alone, functionable `script_selfsigned.py`.
 
-> **CSR config:** authority configuration at line 18 to 24.<br>
-> **Certificate name and folder path:** configuration at line 27 to 31.<br>
-> **Server command:** at line 33, same as ACME script.
+## Self-signed certificate
+Using self-signed certificate to prevent directly IP connecting leak domain certificate.<br>
+> **Demonstration script**<br>
+> stand alone, functionable `script_selfsigned.py`.<br>
+
+> **CSR config:** authority configuration at line 21 to 27.<br>
+> **Certificate name and folder path:** configuration at line 29 to 32.<br>
+> **Server command:** at line 34, same as [CertificateInstall](#webpage-server-reload-or-restart) which using list object at `self.WebServer`.<br>
 ```python
-# Configuration
-def __init__(self):
-    self.IpIfy4 = "https://api.ipify.org?format=json"
-    self.IpIfy6 = "https://api64.ipify.org/?format=json"
-    # CSR config
-    self.Days         = 47
-    self.Country      = "JP"
-    self.State        = "Tokyo Metropolis"
-    self.Locality     = "Toshima"
-    self.Organization = "Tsukinomori Girls' Academy"
-    self.Unit         = "Concert Band Club"
-    self.CSRConfig    = "selfsigned_certificate.conf"
-    # CSR config path
-    self.ConfigFolder = Path.cwd()
-    # Certificate folder path, None as default path
-    self.CertFolder   = None
-    # Certificate and private key name
-    self.PrivateKey   = "selfsigned_certificate.key"
-    self.Certificate  = "selfsigned_certificate.crt"
-    # Server command
-    self.WebServer    = None
+# CSR config
+self.Days         = 47
+self.Country      = "JP"
+self.State        = "Tokyo Metropolis"
+self.Locality     = "Toshima"
+self.Organization = "Tsukinomori Girl's Academy"
+self.Unit         = "Concert Band Club"
+self.CSRConfig    = "selfsigned_certificate.conf"
+# Certificate folder path, None as default path
+self.CertFolder   = None
+# Certificate and private key name
+self.PrivateKey   = "selfsigned_certificate.key"
+self.Certificate  = "selfsigned_certificate.crt"
+# Server command
+self.WebServer    = None
 ```
 
 ## Dependencies
 ### Python version
 Testing passed on above Python version:<br>
++ 3.14.2
 + 3.12.11
 + 3.9.6
 + 3.9.2

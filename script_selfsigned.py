@@ -4,9 +4,10 @@ from pathlib import Path
 import requests
 import subprocess
 from sys import exit
+
 # Error handling
 FORMAT = "%(asctime)s |%(levelname)s |%(message)s"
-logging.basicConfig(level=logging.INFO,filename="selfsign.log",filemode="a",format=FORMAT)
+logging.basicConfig(level=logging.INFO,filename="selfsigned.log",filemode="a",format=FORMAT)
 
 # Signing certificate
 class SelfSignedCertificate():
@@ -14,6 +15,8 @@ class SelfSignedCertificate():
     def __init__(self):
         self.IpIfy4 = "https://api.ipify.org?format=json"
         self.IpIfy6 = "https://api64.ipify.org/?format=json"
+        # Default path
+        self.ConfigFolder = Path.cwd()
         # CSR config
         self.Days         = 47
         self.Country      = "JP"
@@ -22,8 +25,6 @@ class SelfSignedCertificate():
         self.Organization = "Tsukinomori Girl's Academy"
         self.Unit         = "Concert Band Club"
         self.CSRConfig    = "selfsigned_certificate.conf"
-        # CSR config path
-        self.ConfigFolder = Path.cwd()
         # Certificate folder path, None as default path
         self.CertFolder   = None
         # Certificate and private key name
@@ -39,10 +40,10 @@ class SelfSignedCertificate():
                     AddressCheck4JSON = AddressCheck4.json()
                     return AddressCheck4JSON.get("ip") or None
                 else:
-                    logging.error(f"Unable get IPv4 address |HTTP error: {AddressCheck4.status_code}")
+                    logging.error(f"Unable get IPv4 address |{AddressCheck4.status_code}")
                     return None
         except Exception as AddressCheck4Error:
-            logging.error(f"Unable get IPv4 address |Error: {AddressCheck4Error}")
+            logging.error(f"Unable get IPv4 address |{AddressCheck4Error}")
             return None
     def LocalAddressCheck6(self):
         try:
@@ -51,12 +52,11 @@ class SelfSignedCertificate():
                     AddressCheck6JSON = AddressCheck6.json()
                     return AddressCheck6JSON.get("ip") or None
                 else:
-                    logging.error(f"Unable get IPv6 address |HTTP error: {AddressCheck6.status_code}")
+                    logging.error(f"Unable get IPv6 address |{AddressCheck6.status_code}")
                     return None
         except Exception as AddressCheck6Error:
-            logging.error(f"Unable get IPv6 address |Error: {AddressCheck6Error}")
+            logging.error(f"Unable get IPv6 address |{AddressCheck6Error}")
             return None
-
     # Certificate Signing Request Config
     def CreateCSR(self,Address4,Address6):
         try:
@@ -64,22 +64,16 @@ class SelfSignedCertificate():
             CSRConfig6 = f"IP.2 = {Address6}" if isinstance(Address6,str) and Address6.strip() else ""
             CSRConfigContents = [
                 # BasicConfig
-                "[req]",
-                "default_bits = 2048",
-                "default_md = sha256",
-                "utf8 = yes",
-                "string_mask = utf8only",
-                "prompt = no",
-                "req_extensions = x509_v3_req",
+                "[req]","default_bits = 2048","default_md = sha256","utf8 = yes",
+                "string_mask = utf8only","prompt = no","req_extensions = x509_v3_req",
                 "distinguished_name = req_distinguished_name",
                 # X509BasicConstraints
-                "[x509_v3_req]",
-                "basicConstraints = CA:FALSE",
+                "[x509_v3_req]","basicConstraints = CA:FALSE",
                 "keyUsage = digitalSignature, keyEncipherment",
-                "extendedKeyUsage = serverAuth",
-                "subjectAltName = @alt_names",
-                "[alt_names]",
-                "DNS.1 = localhost",
+                "extendedKeyUsage = serverAuth","subjectAltName = @alt_names",
+                # Subject Alternative Name (SAN) config
+                "[alt_names]","DNS.1 = localhost",
+                # IP address as part of SAN
                 CSRConfig4,CSRConfig6,
                 # DistinguishedInfo
                 "[req_distinguished_name]",
@@ -88,16 +82,16 @@ class SelfSignedCertificate():
                 f"localityName = {self.Locality}",
                 f"organizationName = {self.Organization}",
                 f"organizationalUnitName = {self.Unit}",
+                # Certificate common name
                 "commonName = localhost"]
             # CSR config
             CSRConfigFile = self.ConfigFolder / self.CSRConfig
             with CSRConfigFile.open("w",encoding="utf-8") as CSRSignConfig:
-                # Drop empty configuration
+                # Drop empty configuration string
                 for CSRConfigLine in filter(None,CSRConfigContents):
                     CSRSignConfig.write(CSRConfigLine + "\n")
         except Exception as CreateCSRError:
             raise RuntimeError(f"Unable create CSR Configuration file |{CreateCSRError}")
-
     # Create Certificate
     def CertificateSigning(self):
         # CSR path
@@ -127,32 +121,40 @@ class SelfSignedCertificate():
             OpenSSLStatus = subprocess.Popen(OpensslCommand,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
             stdout,stderr = OpenSSLStatus.communicate()
             if OpenSSLStatus.returncode != 0:
-                raise RuntimeError(f"Error occurred during certificate and private key |Output:{stdout} |Error:{stderr}")
+                raise RuntimeError(f"Error occurred during certificate and private key |{stdout} |{stderr}")
+            # Cleanup config
+            CSRConfigFile.unlink()
         except Exception as CertificateSigningRequestError:
             logging.exception(CertificateSigningRequestError)
-            raise RuntimeError(f"Unbale create certificate and private key |Error{CertificateSigningRequestError}")
+            raise RuntimeError(f"Unbale create certificate and private key |{CertificateSigningRequestError}")
         # Server reload
-        if self.WebServer is not None and isinstance(self.WebServer, list):
+        if self.WebServer is not None and isinstance(self.WebServer,list):
             try:
                 ServerStatus = subprocess.Popen(
-                    self.WebServer, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                    self.WebServer,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
                 # Discard output
-                stdout, stderr = ServerStatus.communicate()
-                # Check if reboot command successful
+                stdout,stderr = ServerStatus.communicate()
+                # Check if command unsuccessful
                 if ServerStatus.returncode != 0:
-                    raise RuntimeError(f"Error occurred during server reload/restart |Output:{stdout} |Error:{stderr}")
+                    raise RuntimeError(f"Error occurred during server reload/restart |{stdout} |{stderr}")
             except Exception as ServerReloadError:
                 raise RuntimeError(f"Error occurred during server reload/restart |{ServerReloadError}")
+
 # Runtime
 try:
     SelfSignCa = SelfSignedCertificate()
     Address4 = SelfSignCa.LocalAddressCheck4()
     Address6 = SelfSignCa.LocalAddressCheck6()
+    # Unable get IPv6 / IPv4 only env
+    if Address4 == Address6:
+        Address6 = None
+    # Create CSR config
     SelfSignCa.CreateCSR(Address4,Address6)
+    # Create Certificate
     SelfSignCa.CertificateSigning()
     logging.info("Successful create self-signed certificate")
     exit(0)
 except Exception as RunTimeError:
     logging.warning(f"Script error |{RunTimeError}")
     exit(1)
-# QC 2026B18
+# QC 2026C03

@@ -21,24 +21,30 @@ class API():
 class Configuration():
     def __init__(self,ConfigFilePath):
         try:
-            # Script config path
-            ConfigPathInput = Path(ConfigFilePath)
-            # Local path
-            LocFolderPath = Path(__file__).resolve().parent
-            # Local path with config name input
-            LocConfig = LocFolderPath / ConfigPathInput.name
-            # Read configuration
-            with ConfigPathInput.open("r",encoding="utf-8") as ConfigContent:
-                    self.Load = json.load(ConfigContent)
-        # Try to find configuration file at local folder
-        except FileNotFoundError:
-            with LocConfig.open("r",encoding="utf-8") as ConfigContent:
-                self.Load = json.load(ConfigContent)
+            # Dictionary
+            if isinstance(ConfigFilePath,dict):
+                self.Load = ConfigFilePath
+                return
+            if isinstance(ConfigFilePath,str):
+                # Script config path
+                ConfigPathInput = Path(ConfigFilePath)
+                # Local path
+                LocFolderPath = Path(__file__).resolve().parent
+                # Local path with config name input
+                LocConfig = LocFolderPath / ConfigPathInput.name
+                # Read configuration
+                try:
+                    with ConfigPathInput.open("r",encoding="utf-8") as ConfigContent:
+                        self.Load = json.load(ConfigContent)
+                # Try to find configuration file at local folder
+                except FileNotFoundError:
+                    with LocConfig.open("r",encoding="utf-8") as ConfigContent:
+                        self.Load = json.load(ConfigContent)
         # Error
         except Exception as ReadConfigError:
-            a4zlog.exception(f"Unable reading configuration |Error: {ReadConfigError}")
+            a4zlog.exception(f"Unable reading configuration |{ReadConfigError}")
             raise
-        # QC 2026B11
+        # QC 2026C06
 
 # Runtime package
 class Runtime():
@@ -82,7 +88,7 @@ class Runtime():
             # Time prompt length
             UsableWidth = self.MessageWidth - len(TextPrefix)
             SequentIndent = " " * len(TextPrefix)
-            Wrapping = textwrap.fill(MessageText, width=UsableWidth, subsequent_indent=SequentIndent)
+            Wrapping = textwrap.fill(MessageText,width=UsableWidth,subsequent_indent=SequentIndent)
             print(TextPrefix + Wrapping)
         # Error, unable printout runtime message
         except Exception as RuntimeMessagePrintError:
@@ -117,7 +123,7 @@ class Runtime():
                 return None
         # Calculate error, force renewed
         except Exception as ExpiresCheckError:
-            a4zlog.warning(f"Unable check certificate expires, force renewed |Error: {ExpiresCheckError}")
+            a4zlog.warning(f"Unable check certificate expires, force renewed |{ExpiresCheckError}")
             return None
         # QC 2026B11
 
@@ -157,7 +163,7 @@ class Runtime():
                 DNconfig]
             return CSRConfigContents
         except Exception as CSRConfigError:
-            a4zlog.exception(f"Error occurred during phrasing CSR config |Error: {CSRConfigError}")
+            a4zlog.exception(f"Error occurred during phrasing CSR config |{CSRConfigError}")
             return False
         # QC 2026B11
 
@@ -186,15 +192,17 @@ class Runtime():
             stdout,stderr = CsrStatus.communicate()
             # Check openssl command successful
             if CsrStatus.returncode == 0:
+                # Cleanup CSR config
+                CSRConfigPath.unlink()
                 return OpensslCommand
             else:
                 # Logging stderr for debug
-                a4zlog.warning(f"Unable running OpenSSL command |Output:{stdout} |Error:{stderr}")
+                a4zlog.warning(f"Unable running OpenSSL command |{stdout} |{stderr}")
                 return False
         except Exception as CreateCSRError:
-            a4zlog.exception(f"Error occurred during create CSR file |Error: {CreateCSRError}")
+            a4zlog.exception(f"Error occurred during create CSR file |{CreateCSRError}")
             return False
-        # QC 2026B11
+        # UNQC
 
     # Create and write ACME Challenge file
     def CreateValidationFile(self,VerifyRequestFile):
@@ -229,7 +237,7 @@ class Runtime():
             self.Message(f"Challenge file {FullFilePath} been created")
             return True
         except Exception as CreateValidationFileError:
-            a4zlog.exception(f"Error occurred during create challenge file |Error: {CreateValidationFileError}")
+            a4zlog.exception(f"Error occurred during create challenge file |{CreateValidationFileError}")
             return False
         # QC 2026B11
 
@@ -254,7 +262,7 @@ class Runtime():
                 except FileNotFoundError:
                     pass
         except Exception as CleanValidationFileError:
-            a4zlog.exception(f"Error occurred during delete challenge file |Error: {CleanValidationFileError}")
+            a4zlog.exception(f"Error occurred during delete challenge file |{CleanValidationFileError}")
         # QC 2026B11
 
     # Install certificate to server folder, reload is optional
@@ -289,12 +297,12 @@ class Runtime():
                     return ServerCommand
                 # Restart or reload fail
                 else:
-                    a4zlog.error(f"Unable running server reload/restart command |Output:{stdout} |Error:{stderr}")
+                    a4zlog.error(f"Unable running server reload/restart command |{stdout} |{stderr}")
                     return False
             else:
                 return 200
         except Exception as CertificateInstallError:
-            a4zlog.exception(f"Error occurred during install certificate or reload/restart server |Error: {CertificateInstallError}")
+            a4zlog.exception(f"Error occurred during install certificate or reload/restart server |{CertificateInstallError}")
             return False
         # QC 2026B11
 
@@ -332,9 +340,9 @@ class Telegram():
             elif PostResponse.status_code == 400:
                 a4zlog.warning(f"Telegram ChatID is empty, notifications will not be sent")
             else:
-                a4zlog.warning(f"Unable sending notifications |HTTP Error: {PostResponse.status_code}")
+                a4zlog.warning(f"Unable sending notifications |HTTP {PostResponse.status_code}")
         except Exception as Message2MeError:
-            a4zlog.exception(f"Error occurred during sending notifications |Error: {Message2MeError}")
+            a4zlog.exception(f"Error occurred during sending notifications |{Message2MeError}")
         # QC 2026B11
 
     # Get Telegram ChatID
@@ -350,7 +358,7 @@ class Telegram():
             if ChatIDResponse.status_code == 200:
                 TelegramData = ChatIDResponse.json()
             else:
-                a4zlog.warning(f"Unable get ChatID |HTTP Error: {ChatIDResponse.status_code}")
+                a4zlog.warning(f"Unable get ChatID |HTTP {ChatIDResponse.status_code}")
                 return
             # Check JSON
             AskChatIDResult = TelegramData.get("result")
@@ -365,7 +373,7 @@ class Telegram():
                 CheckChatID = CheckChatResult.get("message",{}).get("chat",{}).get("id")
                 self.RtM.Message(f"You ChatID is: {CheckChatID}")
         except Exception as GetChatIDError:
-            a4zlog.exception(f"Error occurred during get ChatID |Error: {GetChatIDError}")
+            a4zlog.exception(f"Error occurred during get ChatID |{GetChatIDError}")
         # QC 2026A29
 
 # Cloudflare API package
@@ -390,14 +398,14 @@ class Cloudflare():
                 if TokenVerifyResponse.status_code == 200:
                     TokenVerifyData = TokenVerifyResponse.json()
                 else:
-                    a4zlog.warning(f"Unable connect Cloudflare API |HTTP Error: {TokenVerifyResponse.status_code}")
+                    a4zlog.warning(f"Unable connect Cloudflare API |HTTP {TokenVerifyResponse.status_code}")
                     return False
             # Check respon status
             VerifyCheckStatus = TokenVerifyData.get("success")
             # Error
             if VerifyCheckStatus == False:
                 TokenVerifyError = TokenVerifyData.get("errors")
-                a4zlog.warning(f"Error occurred during update verify token |API error: {TokenVerifyError}")
+                a4zlog.warning(f"Error occurred during update verify token |API {TokenVerifyError}")
                 return False
             # Success
             if DisplayVerifyResult is None:
@@ -405,7 +413,7 @@ class Cloudflare():
             else:
                 return TokenVerifyData
         except Exception as VerifyCFTokenError:
-            a4zlog.exception(f"Error occurred during verify Cloudflare API token |Error: {VerifyCFTokenError}")
+            a4zlog.exception(f"Error occurred during verify Cloudflare API token |{VerifyCFTokenError}")
             return False
         # QC 2026B11
 
@@ -419,13 +427,13 @@ class Cloudflare():
                 if RecordsRespon.status_code == 200:
                     RecordsResponData = RecordsRespon.json()
                 else:
-                    a4zlog.warning(f"Unable connect Cloudflare API |HTTP Error: {RecordsRespon.status_code}")
+                    a4zlog.warning(f"Unable connect Cloudflare API |HTTP {RecordsRespon.status_code}")
                     return False
             # Return records as dict
             GetRecordsStatus = RecordsResponData.get("success")
             if GetRecordsStatus == False:
                 GetRecordsError = RecordsResponData.get("errors")
-                a4zlog.warning(f"Error occurred during download DNS records |API error: {GetRecordsError}")
+                a4zlog.warning(f"Error occurred during download DNS records |API {GetRecordsError}")
                 return False
             # Enable records file output
             if FileOutput is not None:
@@ -436,7 +444,7 @@ class Cloudflare():
             else:
                 return RecordsResponData
         except Exception as GetCFRecordsError:
-            a4zlog.exception(f"Error occurred during download DNS records |Error: {GetCFRecordsError}")
+            a4zlog.exception(f"Error occurred during download DNS records |{GetCFRecordsError}")
             return False
         # QC 2026B11
 
@@ -464,18 +472,18 @@ class Cloudflare():
                 if UpdateRespon.status_code == 200:
                     UpdateResponData = UpdateRespon.json()
                 else:
-                    a4zlog.warning(f"Unable connect Cloudflare API |HTTP Error: {UpdateRespon.status_code}")
+                    a4zlog.warning(f"Unable connect Cloudflare API |HTTP {UpdateRespon.status_code}")
                     return False
             # Check
             UpdateResponCheck = UpdateResponData.get("success")
             if UpdateResponCheck == False:
                 UpdateCNAMEError = UpdateResponData.get("errors")
-                a4zlog.warning(f"Error occurred during update CNAME record |API error: {UpdateCNAMEError}")
+                a4zlog.warning(f"Error occurred during update CNAME record |API {UpdateCNAMEError}")
                 return False
             else:
                 return UpdateResponData
         except Exception as UpdateCNAMEError:
-            a4zlog.exception(f"Error occurred during update CNAME record |Error: {UpdateCNAMEError}")
+            a4zlog.exception(f"Error occurred during update CNAME record |{UpdateCNAMEError}")
             return False
         # QC 2026B11
 
@@ -533,13 +541,13 @@ class ZeroSSL():
                 if CreateRespon.status_code == 200:
                     CreateResponData = CreateRespon.json()
                 else:
-                    a4zlog.warning(f"Unable connect ZeroSSL API |HTTP Error: {CreateRespon.status_code}")
+                    a4zlog.warning(f"Unable connect ZeroSSL API |HTTP {CreateRespon.status_code}")
                     return False
              # Possible errors respon
             CreateCAError = CreateResponData.get("success")
             if CreateCAError == False:
                 CreateCAErrorStatus = CreateResponData.get("error",{}).get("type","Unknown error")
-                a4zlog.warning(f"Error occurred during request new certificate |API error: {CreateCAErrorStatus}")
+                a4zlog.warning(f"Error occurred during request new certificate |API {CreateCAErrorStatus}")
                 return False
             # Check certificate status
             VerifyStatus = CreateResponData.get("status",None)
@@ -548,15 +556,17 @@ class ZeroSSL():
                 ValidationCacheFile = Path(self.Validation)
                 with ValidationCacheFile.open("w",encoding="utf-8") as ValidationData:
                     json.dump(CreateResponData,ValidationData,indent=4)
+                    # Cleanup CSR
+                    CSRFile.unlink()
                 return CreateResponData
             # Catch exception
             else:
                 a4zlog.warning(f"Unknown error occurred during request new certificate")
                 return False
         except Exception as ErrorStatus:
-            a4zlog.exception(f"Error occurred during request new certificate |Error: {ErrorStatus}")
+            a4zlog.exception(f"Error occurred during request new certificate |{ErrorStatus}")
             return False
-        # QC 2026B11
+        # UNQC
 
     # Phrasing ZeroSSL verify JSON
     def ZeroSSLVerifyData(self,VerifyRequest,ValidationMethod="CNAME_CSR_HASH"):
@@ -606,11 +616,11 @@ class ZeroSSL():
                                   "additional_domains":{"file":Additional_FILE,"content":Additional_CONTENT}}
                 return CreateCAVerify
             else:
-                a4zlog.warning(f"Unable phrasing ZeroSSL verify data |Validation mode: {ValidationMethod}")
+                a4zlog.warning(f"Unable phrasing ZeroSSL verify data |Validation mode {ValidationMethod}")
                 return False
         # Error
         except Exception as VerifyDataPhrasingError:
-            a4zlog.exception(f"Error occurred during phrasing ZeroSSL verify data |Error: {VerifyDataPhrasingError}")
+            a4zlog.exception(f"Error occurred during phrasing ZeroSSL verify data |{VerifyDataPhrasingError}")
             return False
         # QC 2026B11, CNAME-PASS HTTPS_FILE-PENDING
 
@@ -635,19 +645,19 @@ class ZeroSSL():
                 if VerificationRespon.status_code == 200:
                     VerificationResponData = VerificationRespon.json()
                 else:
-                    a4zlog.warning(f"Unable connect ZeroSSL API |HTTP Error: {VerificationRespon.status_code}")
+                    a4zlog.warning(f"Unable connect ZeroSSL API |HTTP {VerificationRespon.status_code}")
                     return False
             # Possible errors respon
             VerifyCheck = VerificationResponData.get("success")
             if VerifyCheck == False:
                 VerifyErrorStatus = VerificationResponData.get("error",{}).get("type","Unknown error")
-                a4zlog.warning(f"Error occurred during verification |API error: {VerifyErrorStatus}")
+                a4zlog.warning(f"Error occurred during verification |API {VerifyErrorStatus}")
                 return False
             # Get certificate status
             VerifyStatus = VerificationResponData.get("status",False)
             return VerifyStatus                
         except Exception as CAVerificationError:
-            a4zlog.exception(f"Error occurred during verification |Error: {CAVerificationError}")
+            a4zlog.exception(f"Error occurred during verification |{CAVerificationError}")
             return False
         # QC 2026B11
 
@@ -671,13 +681,13 @@ class ZeroSSL():
                 if DownloadRespon.status_code == 200:
                     DownloadResponData = DownloadRespon.json()
                 else:
-                    a4zlog.error(f"Unable connect ZeroSSL API |HTTP Error: {DownloadRespon.status_code}")
+                    a4zlog.error(f"Unable connect ZeroSSL API |HTTP {DownloadRespon.status_code}")
                     return False
             # Possible errors respon
             DownloadCheck = DownloadResponData.get("success")
             if DownloadCheck == False:
                 DownloadErrorStatus = DownloadResponData.get("error",{}).get("type","Unknown error")
-                a4zlog.warning(f"Error occurred during download certificate |API error: {DownloadErrorStatus}")
+                a4zlog.warning(f"Error occurred during download certificate |API {DownloadErrorStatus}")
                 return False
             # Return certificate payload, inline mode check
             if not DownloadResponData.get(self.Certificate,"").strip():
@@ -685,7 +695,7 @@ class ZeroSSL():
                 return False
             return DownloadResponData
         except Exception as DownloadCAError:
-            a4zlog.exception(f"Error occurred during downloading |Error: {DownloadCAError}")
+            a4zlog.exception(f"Error occurred during downloading |{DownloadCAError}")
             return False
         # QC 2026B11
 
@@ -698,17 +708,17 @@ class ZeroSSL():
                 if CancelRespon.status_code == 200:
                     CancelResponData = CancelRespon.json()
                 else:
-                    a4zlog.error(f"Unable connect ZeroSSL API |HTTP Error: {CancelRespon.status_code}")
+                    a4zlog.error(f"Unable connect ZeroSSL API |HTTP {CancelRespon.status_code}")
                     return False
             # Check status
             CancelStatus = CancelResponData.get("success")
             if CancelStatus == False:
                 CancelErrorStatus = CancelResponData.get("error",{}).get("type","Unknown error")
-                a4zlog.warning(f"Error occurred during cancel certificate |API error: {CancelErrorStatus}")
+                a4zlog.warning(f"Error occurred during cancel certificate |API {CancelErrorStatus}")
                 return False
             return CancelResponData
         except Exception as CancelCAError:
-            a4zlog.exception(f"Error occurred during cancel certificate |Error:{CancelCAError}")
+            a4zlog.exception(f"Error occurred during cancel certificate |{CancelCAError}")
             return False
         # QC 2026B18
 
@@ -726,16 +736,16 @@ class ZeroSSL():
                 if RevokeRespon.status_code == 200:
                     RevokeResponData = RevokeRespon.json()
                 else:
-                    a4zlog.error(f"Unable connect ZeroSSL API |HTTP Error: {RevokeRespon.status_code}")
+                    a4zlog.error(f"Unable connect ZeroSSL API |HTTP {RevokeRespon.status_code}")
                     return False
             # Check status
             RevokeStatus = RevokeResponData.get("success")
             if RevokeStatus == False:
                 RevokeErrorStatus = RevokeResponData.get("error",{}).get("type","Unknown error")
-                a4zlog.warning(f"Error occurred during revoke certificate |API error: {RevokeErrorStatus}")
+                a4zlog.warning(f"Error occurred during revoke certificate |API {RevokeErrorStatus}")
                 return False
             return RevokeResponData
         except Exception as RevokeCAError:
-            a4zlog.exception(f"Error occurred during revoke certificate |Error:{RevokeCAError}")
+            a4zlog.exception(f"Error occurred during revoke certificate |{RevokeCAError}")
             return False
         # UNQC
