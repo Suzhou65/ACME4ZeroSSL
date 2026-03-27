@@ -293,18 +293,22 @@ class Runtime():
                 # Discard output
                 stdout,stderr = ServerStatus.communicate()
                 # Check if reboot command successful
-                if ServerStatus.returncode == 0:
+                if ServerStatus.returncode != 0:
+                    # Cleanup pending private key
+                    PKPending.unlink()
                     return ServerCommand
                 # Restart or reload fail
                 else:
                     a4zlog.error(f"Unable running server reload/restart command |{stdout} |{stderr}")
                     return False
             else:
+                # Cleanup pending private key
+                PKPending.unlink()
                 return 200
         except Exception as CertificateInstallError:
             a4zlog.exception(f"Error occurred during install certificate or reload/restart server |{CertificateInstallError}")
             return False
-        # QC 2026B11
+        # UNQC
 
 # Sending Telegram message
 class Telegram():
@@ -454,13 +458,13 @@ class Cloudflare():
             # Records ID check
             RecordID = UpdatePayload.get("cname_id")
             if not RecordID:
-                a4zlog.warning(f"Error occurred during phrasing CNAME update payload |Record ID: {RecordID}")
+                a4zlog.warning(f"Error occurred during phrasing CNAME update payload |Record ID {RecordID}")
                 return False
             # CNAME update payload
             CNAMEText = UpdatePayload.get("cname")
             CNAMEValue = UpdatePayload.get("value")
             if not (CNAMEText and CNAMEValue):
-                a4zlog.warning(f"Error occurred during phrasing CNAME update payload |CNAME: {CNAMEText} |Value: {CNAMEValue}")
+                a4zlog.warning(f"Error occurred during phrasing CNAME update payload |CNAME {CNAMEText} |Value {CNAMEValue}")
                 return False
             # Payload
             UpdateCNAMEContent = {"type":"CNAME","name":CNAMEText,"content":CNAMEValue,"proxiable":False,"proxied":False,"ttl":1}

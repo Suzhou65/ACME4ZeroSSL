@@ -1,6 +1,7 @@
 # Acme4ZeroSSL
-[![Python](https://github.takahashi65.info/lib_badge/python.svg)](https://www.python.org/)
-[![UA](https://github.takahashi65.info/lib_badge/active_maintenance.svg)](https://github.com/Suzhou65/acme4zerossl)
+![WbH](https://github.takahashi65.info/lib_badge/written-by-human.svg)
+![Python](https://github.takahashi65.info/lib_badge/python.svg)
+![UM](https://github.takahashi65.info/lib_badge/active_maintenance.svg)
 [![Size](https://img.shields.io/github/repo-size/Suzhou65/acme4zerossl.svg)](https://shields.io/category/size)
 
 Python script for renew certificate from ZeroSSL.
@@ -231,9 +232,9 @@ Type=oneshot
 # Root
 User=root
 # Script folder absolute path
-WorkingDirectory=/documents/script
+WorkingDirectory=/var/acme
 # Python environment (interpreter) and script located
-ExecStart=/usr/bin/python3 /documents/script/script_cname.py
+ExecStart=/usr/bin/python3 /var/acme/script_cname.py
 # Log output
 StandardOutput=journal
 StandardError=journal
@@ -614,23 +615,26 @@ Using self-signed certificate to prevent directly IP connecting leak domain cert
 > **Demonstration script**<br>
 > stand alone, functionable `script_selfsigned.py`.<br>
 
-> **CSR config:** authority configuration at line 21 to 27.<br>
-> **Certificate name and folder path:** configuration at line 29 to 32.<br>
-> **Server command:** at line 34, same as [CertificateInstall](#webpage-server-reload-or-restart) which using list object at `self.WebServer`.<br>
+> **Backup IP Address** configuration at line 17 to 18.<br>
+> **CSR config:** authority configuration at line 20 to 25.<br>
+> **Certificate filename and folder path:** configuration at line 27, 29 and 30.<br>
+> **Server command:** configuration at line 32, the same format as [CertificateInstall](#webpage-server-reload-or-restart).<br>
 ```python
+# Backup IP address, if you really want
+self.Address4Backup = ""
+self.Address6Backup = None
 # CSR config
-self.Days         = 47
+self.Days         = 60
 self.Country      = "JP"
 self.State        = "Tokyo Metropolis"
 self.Locality     = "Toshima"
 self.Organization = "Tsukinomori Girl's Academy"
 self.Unit         = "Concert Band Club"
-self.CSRConfig    = "selfsigned_certificate.conf"
 # Certificate folder path, None as default path
 self.CertFolder   = None
 # Certificate and private key name
-self.PrivateKey   = "selfsigned_certificate.key"
 self.Certificate  = "selfsigned_certificate.crt"
+self.PrivateKey   = "selfsigned_certificate.key"
 # Server command
 self.WebServer    = None
 ```
@@ -640,6 +644,7 @@ self.WebServer    = None
 Testing passed on above Python version:<br>
 + 3.14.2
 + 3.12.11
++ 3.11.9
 + 3.9.6
 + 3.9.2
 + 3.7.3
