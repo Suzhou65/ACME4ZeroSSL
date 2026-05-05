@@ -32,5 +32,10 @@
    },
    "FileChallenge":{
       "HTMLFilePath": ""
+   },
+   "Cpanel":{
+      "ServerUAPI": "",
+      "Username": "",
+      "Token": ""
    }
 }

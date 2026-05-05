@@ -19,22 +19,22 @@ class API():
 
 # Configuration function, reading json file
 class Configuration():
-    def __init__(self,ConfigFilePath):
+    def __init__(self,ConfigFile):
         try:
             # Dictionary
-            if isinstance(ConfigFilePath,dict):
-                self.Load = ConfigFilePath
+            if isinstance(ConfigFile,dict):
+                self.Load = ConfigFile
                 return
-            if isinstance(ConfigFilePath,str):
+            if isinstance(ConfigFile,str):
                 # Script config path
-                ConfigPathInput = Path(ConfigFilePath)
+                ConfigFilePath = Path(ConfigFile)
                 # Local path
                 LocFolderPath = Path(__file__).resolve().parent
                 # Local path with config name input
-                LocConfig = LocFolderPath / ConfigPathInput.name
+                LocConfig = LocFolderPath / ConfigFilePath.name
                 # Read configuration
                 try:
-                    with ConfigPathInput.open("r",encoding="utf-8") as ConfigContent:
+                    with ConfigFilePath.open("r",encoding="utf-8") as ConfigContent:
                         self.Load = json.load(ConfigContent)
                 # Try to find configuration file at local folder
                 except FileNotFoundError:
@@ -48,9 +48,9 @@ class Configuration():
 
 # Runtime package
 class Runtime():
-    def __init__(self,ConfigFilePath):
+    def __init__(self,ConfigFile):
         try:
-            self.RuntimeConfig = Configuration(ConfigFilePath).Load
+            self.RuntimeConfig = Configuration(ConfigFile).Load
             # File path
             self.Cache         = self.RuntimeConfig['ZeroSSLAPI']['Cache']
             self.CSRConfigFile = self.RuntimeConfig['Certificate']['Config']
@@ -96,7 +96,7 @@ class Runtime():
         # QC 2026B11
 
     # Check certificate expires, default minimum is 14 days
-    def ExpiresCheck(self,Minimum=(14)):
+    def ExpiresCheck(self,Minimum=14):
         # Load config for cache path
         CacheFilePath = Path(self.Cache)
         # Read cache get certificate expires
@@ -110,9 +110,9 @@ class Runtime():
         # Get expires
         try:
             # Translate cache file certificate expires string into time format
-            ExpiresTime = datetime.datetime.strptime(CacheData.get("expires"),"%Y-%m-%d %H:%M:%S")
+            ExpiresTime = datetime.datetime.strptime(CacheData.get("expires"),"%Y-%m-%d %H:%M:%S").replace(tzinfo=datetime.timezone.utc)
             # Currently time
-            CurrentTime = datetime.datetime.now()
+            CurrentTime = datetime.datetime.now(tz=datetime.timezone.utc)
             # Calculate
             TimeDifference = ExpiresTime - CurrentTime
             # No need renewed
@@ -125,10 +125,10 @@ class Runtime():
         except Exception as ExpiresCheckError:
             a4zlog.warning(f"Unable check certificate expires, force renewed |{ExpiresCheckError}")
             return None
-        # QC 2026B11
+        # QC 2026E03
 
     # Certificate Signing Request
-    def CSRConfig(self):
+    def CreateCSRConfig(self):
         try:
             # Get main alternative names
             AltNames1 = f"DNS.1 = {self.CommonName}"
@@ -170,7 +170,7 @@ class Runtime():
     # Create certificates signing request and PK
     def CreateCSR(self):
         try:
-            CSRConfigContents = self.CSRConfig()
+            CSRConfigContents = self.CreateCSRConfig()
             if not isinstance(CSRConfigContents,list):
                 a4zlog.error(f"Unable create CSR file due to wrong CSR config")
                 return False
@@ -202,7 +202,7 @@ class Runtime():
         except Exception as CreateCSRError:
             a4zlog.exception(f"Error occurred during create CSR file |{CreateCSRError}")
             return False
-        # UNQC
+        # QC 2026D23
 
     # Create and write ACME Challenge file
     def CreateValidationFile(self,VerifyRequestFile):
@@ -242,7 +242,7 @@ class Runtime():
         # QC 2026B11
 
     # Delete ACME Challenge file after verify
-    def CleanValidationFile(self,VerifyRequestFile):
+    def DeleteValidationFile(self,VerifyRequestFile):
         try:
             # Part of file path and name
             ValidationFile = VerifyRequestFile.get("file")
@@ -265,8 +265,8 @@ class Runtime():
             a4zlog.exception(f"Error occurred during delete challenge file |{CleanValidationFileError}")
         # QC 2026B11
 
-    # Install certificate to server folder, reload is optional
-    def CertificateInstall(self,CertificateContent,ServerCommand=None):
+    # Install certificate to folder, reload is optional
+    def Install(self,CertificateContent,ServerCommand=None):
         try:
             # Move private key from pending to folder
             PKPending = Path(self.PendingPK)
@@ -293,7 +293,7 @@ class Runtime():
                 # Discard output
                 stdout,stderr = ServerStatus.communicate()
                 # Check if reboot command successful
-                if ServerStatus.returncode != 0:
+                if ServerStatus.returncode == 0:
                     # Cleanup pending private key
                     PKPending.unlink()
                     return ServerCommand
@@ -308,25 +308,25 @@ class Runtime():
         except Exception as CertificateInstallError:
             a4zlog.exception(f"Error occurred during install certificate or reload/restart server |{CertificateInstallError}")
             return False
-        # UNQC
+        # QC 2026D23
 
 # Sending Telegram message
 class Telegram():
-    def __init__(self,ConfigFilePath):
+    def __init__(self,ConfigFile):
         try:
-            self.TgConfig     = Configuration(ConfigFilePath).Load
+            self.TgConfig     = Configuration(ConfigFile).Load
             self.BotToken     = self.TgConfig['Telegram_BOTs']['Token']
             self.ChatID       = self.TgConfig['Telegram_BOTs']['ChatID']
             self.Domainheader = self.TgConfig['Certificate']['Domains'][0]
             self.Com = API()
             # Print message
-            self.RtM          = Runtime(ConfigFilePath)
+            self.RtM          = Runtime(ConfigFile)
         except Exception as TelegramInitialError:
             a4zlog.exception(f"Telegram__init__ |{TelegramInitialError}")
             raise
 
     # Set default message for testing
-    def Message2Me(self,TelegramMessage="Here, the world!"):
+    def Message(self,TelegramMessage="Here, the world!"):
         try:
             # Disable message sending
             if not str(self.BotToken).strip():
@@ -336,18 +336,18 @@ class Telegram():
             MessageText = {"chat_id":f"{self.ChatID}","text":MessageHeader}
             # Connetc URL
             TelegramSendURL = (self.Com.Telegram + f"{self.BotToken}/sendMessage")
-            with requests.Session() as MessageSender:
-                PostResponse = MessageSender.post(TelegramSendURL,json=MessageText,timeout=30)
-            if PostResponse.status_code == 200:
+            with requests.Session() as SendingMessage:
+                TelegramResponse = SendingMessage.post(TelegramSendURL,json=MessageText,timeout=30)
+            if TelegramResponse.status_code == 200:
                 # Runtime printout
                 self.RtM.Message(TelegramMessage)
-            elif PostResponse.status_code == 400:
+            elif TelegramResponse.status_code == 400:
                 a4zlog.warning(f"Telegram ChatID is empty, notifications will not be sent")
             else:
-                a4zlog.warning(f"Unable sending notifications |HTTP {PostResponse.status_code}")
+                a4zlog.warning(f"Unable sending notifications |HTTP {TelegramResponse.status_code}")
         except Exception as Message2MeError:
             a4zlog.exception(f"Error occurred during sending notifications |{Message2MeError}")
-        # QC 2026B11
+        # QC 2026D30
 
     # Get Telegram ChatID
     def GetChatID(self):
@@ -358,11 +358,11 @@ class Telegram():
             # Connetc URL
             AskChatIDURL = (self.Com.Telegram + f"{self.BotToken}/getUpdates")
             with requests.Session() as AskChatID:
-                ChatIDResponse = AskChatID.post(AskChatIDURL,timeout=30)
-            if ChatIDResponse.status_code == 200:
-                TelegramData = ChatIDResponse.json()
+                TelegramResponse = AskChatID.post(AskChatIDURL,timeout=30)
+            if TelegramResponse.status_code == 200:
+                TelegramData = TelegramResponse.json()
             else:
-                a4zlog.warning(f"Unable get ChatID |HTTP {ChatIDResponse.status_code}")
+                a4zlog.warning(f"Unable get ChatID |HTTP {TelegramResponse.status_code}")
                 return
             # Check JSON
             AskChatIDResult = TelegramData.get("result")
@@ -372,19 +372,18 @@ class Telegram():
                 return
             else:
                 # Select ChatID
-                CheckChatList = AskChatIDResult.get("result")
-                CheckChatResult = CheckChatList[0]
+                CheckChatResult = AskChatIDResult[0]
                 CheckChatID = CheckChatResult.get("message",{}).get("chat",{}).get("id")
                 self.RtM.Message(f"You ChatID is: {CheckChatID}")
         except Exception as GetChatIDError:
             a4zlog.exception(f"Error occurred during get ChatID |{GetChatIDError}")
-        # QC 2026A29
+        # QC 2026D30
 
 # Cloudflare API package
 class Cloudflare():
-    def __init__(self,ConfigFilePath):
+    def __init__(self,ConfigFile):
         try:
-            self.CfConfig = Configuration(ConfigFilePath).Load
+            self.CfConfig = Configuration(ConfigFile).Load
             self.Token    = self.CfConfig['CloudflareAPI']['Token']
             self.Zone     = self.CfConfig['CloudflareRecords']['ZoneID']
             self.Com = API()
@@ -392,37 +391,38 @@ class Cloudflare():
             self.CFHeader = {"Authorization":f"Bearer {self.Token}","Content-Type":"application/json"}
         except Exception as CloudflareInitialError:
             a4zlog.exception(f"Cloudflare__init__ |{CloudflareInitialError}")
+            raise
 
     # Verify Cloudflare API token
-    def VerifyCFToken(self,DisplayVerifyResult=None):
+    def Verify(self,DisplayVerifyResult=None):
         try:
-            VerifTokenAPI = (self.Com.Cloudflare + "user/tokens/verify")
-            with requests.Session() as TokenVerify:
-                TokenVerifyResponse = TokenVerify.get(VerifTokenAPI,headers=self.CFHeader,timeout=30)
-                if TokenVerifyResponse.status_code == 200:
-                    TokenVerifyData = TokenVerifyResponse.json()
+            VerifyTokenAPI = (self.Com.Cloudflare + "user/tokens/verify")
+            with requests.Session() as VerifyRequest:
+                VerifyResponse = VerifyRequest.get(VerifyTokenAPI,headers=self.CFHeader,timeout=30)
+                if VerifyResponse.status_code == 200:
+                    VerifyResult = VerifyResponse.json()
                 else:
-                    a4zlog.warning(f"Unable connect Cloudflare API |HTTP {TokenVerifyResponse.status_code}")
+                    a4zlog.warning(f"Unable connect Cloudflare API |HTTP {VerifyResponse.status_code}")
                     return False
             # Check respon status
-            VerifyCheckStatus = TokenVerifyData.get("success")
+            ResponseStatusCheck = VerifyResult.get("success")
             # Error
-            if VerifyCheckStatus == False:
-                TokenVerifyError = TokenVerifyData.get("errors")
-                a4zlog.warning(f"Error occurred during update verify token |API {TokenVerifyError}")
+            if ResponseStatusCheck == False:
+                VerifyError = VerifyResult.get("errors")
+                a4zlog.warning(f"Error occurred during update verify token |API {VerifyError}")
                 return False
             # Success
             if DisplayVerifyResult is None:
-                return TokenVerifyData.get("result",{}).get("status")
+                return VerifyResult.get("result",{}).get("status")
             else:
-                return TokenVerifyData
-        except Exception as VerifyCFTokenError:
-            a4zlog.exception(f"Error occurred during verify Cloudflare API token |{VerifyCFTokenError}")
+                return VerifyResult
+        except Exception as VerifyError:
+            a4zlog.exception(f"Error occurred during verify Cloudflare API token |{VerifyError}")
             return False
-        # QC 2026B11
+        # QC 2026D30
 
     # Download all DNS records from Cloudflare
-    def GetCFRecords(self,FileOutput=None):
+    def GetDNSRecords(self,FileOutput=None):
         try:
             GetZoneDNSRecordsAPI = (self.Com.Cloudflare + f"zones/{self.Zone}/dns_records")
             with requests.Session() as GetCloudflareRecords:
@@ -450,10 +450,10 @@ class Cloudflare():
         except Exception as GetCFRecordsError:
             a4zlog.exception(f"Error occurred during download DNS records |{GetCFRecordsError}")
             return False
-        # QC 2026B11
+        # QC 2026D30
 
     # Update CNAME records at Cloudflare
-    def UpdateCFCNAME(self,UpdatePayload):
+    def UpdateCNAME(self,UpdatePayload):
         try:
             # Records ID check
             RecordID = UpdatePayload.get("cname_id")
@@ -489,13 +489,13 @@ class Cloudflare():
         except Exception as UpdateCNAMEError:
             a4zlog.exception(f"Error occurred during update CNAME record |{UpdateCNAMEError}")
             return False
-        # QC 2026B11
+        # QC 2026E03
 
 # ZeroSSL REST API package
 class ZeroSSL():
-    def __init__(self,ConfigFilePath):
+    def __init__(self,ConfigFile):
         try:
-            self.ZeroSSLConfig = Configuration(ConfigFilePath).Load
+            self.ZeroSSLConfig = Configuration(ConfigFile).Load
             self.ZeroSSLAuth   = self.ZeroSSLConfig['ZeroSSLAPI']['AccessKey']
             self.ZeroSSLCSR    = self.ZeroSSLConfig['Certificate']['CSR']
             self.Validation    = self.ZeroSSLConfig['ZeroSSLAPI']['Cache']
@@ -522,9 +522,10 @@ class ZeroSSL():
             self.ZeroSSLHeader = {"Content-Type":"application/json"}
         except Exception as ZeroSSLInitialError:
             a4zlog.exception(f"ZeroSSL__init__ |{ZeroSSLInitialError}")
+            raise
 
     # Sending certificate create request
-    def ZeroSSLCreateCA(self):
+    def Create(self):
         try:
             # Read Certificates signing request
             CSRFile = Path(self.ZeroSSLCSR)
@@ -570,10 +571,10 @@ class ZeroSSL():
         except Exception as ErrorStatus:
             a4zlog.exception(f"Error occurred during request new certificate |{ErrorStatus}")
             return False
-        # UNQC
+        # QC 2026E03
 
-    # Phrasing ZeroSSL verify JSON
-    def ZeroSSLVerifyData(self,VerifyRequest,ValidationMethod="CNAME_CSR_HASH"):
+    # Parsing ZeroSSL verify JSON
+    def PhrasingVerifyJSON(self,VerifyRequest,ValidationMethod="CNAME_CSR_HASH"):
         try:
             # Additional domain check
             AdditionalDomainCheck = VerifyRequest.get(self.L1,{}).get(self.L2,{}).get(self.AltName)
@@ -620,16 +621,16 @@ class ZeroSSL():
                                   "additional_domains":{"file":Additional_FILE,"content":Additional_CONTENT}}
                 return CreateCAVerify
             else:
-                a4zlog.warning(f"Unable phrasing ZeroSSL verify data |Validation mode {ValidationMethod}")
+                a4zlog.warning(f"Unable parsing ZeroSSL verify data |Validation mode {ValidationMethod}")
                 return False
         # Error
         except Exception as VerifyDataPhrasingError:
-            a4zlog.exception(f"Error occurred during phrasing ZeroSSL verify data |{VerifyDataPhrasingError}")
+            a4zlog.exception(f"Error occurred during parsing ZeroSSL verify data |{VerifyDataPhrasingError}")
             return False
-        # QC 2026B11, CNAME-PASS HTTPS_FILE-PENDING
+        # QC 2026E03, CNAME-PASS HTTPS_FILE-PENDING
 
     # Verification, when using CNAME and HTTP/HTTPS file verify
-    def ZeroSSLVerification(self,CertificateID=None,ValidationMethod="CNAME_CSR_HASH"):
+    def Verification(self,CertificateID=None,ValidationMethod="CNAME_CSR_HASH"):
         try:
             # Reading certificate hash from cache
             if CertificateID is None or not str(CertificateID).strip():
@@ -663,10 +664,10 @@ class ZeroSSL():
         except Exception as CAVerificationError:
             a4zlog.exception(f"Error occurred during verification |{CAVerificationError}")
             return False
-        # QC 2026B11
+        # QC 2026E03
 
     # Download certificate from ZeroSSL
-    def ZeroSSLDownloadCA(self,CertificateID=None):
+    def Download(self,CertificateID=None):
         try:
             # Reading certificate hash from cache
             if CertificateID is None or not str(CertificateID).strip():
@@ -701,10 +702,10 @@ class ZeroSSL():
         except Exception as DownloadCAError:
             a4zlog.exception(f"Error occurred during downloading |{DownloadCAError}")
             return False
-        # QC 2026B11
+        # QC 2026E03
 
     # Cancel certificate from ZeroSSL
-    def ZeroSSLCancelCA(self,CertificateID):
+    def Cancel(self,CertificateID):
         try:
             CertificateCancelREST = (self.Com.ZeroSSL + f"/{CertificateID}/cancel?access_key={self.ZeroSSLAuth}")
             with requests.Session() as RequestCancel:
@@ -724,10 +725,10 @@ class ZeroSSL():
         except Exception as CancelCAError:
             a4zlog.exception(f"Error occurred during cancel certificate |{CancelCAError}")
             return False
-        # QC 2026B18
+        # QC 2026E03
 
     # Revoke certificate from ZeroSSL
-    def ZeroSSLRevokeCA(self,CertificateID,RevokeReason=None):
+    def Revoke(self,CertificateID,RevokeReason=None):
         try:
             # Unspecified revoke reason
             if RevokeReason is None:
@@ -752,4 +753,197 @@ class ZeroSSL():
         except Exception as RevokeCAError:
             a4zlog.exception(f"Error occurred during revoke certificate |{RevokeCAError}")
             return False
-        # UNQC
+        # QC 2026E03
+
+# cPanel UAPI
+class Cpanel():
+    def __init__(self,ConfigFile):
+        try:
+            self.CpanelConfig  = Configuration(ConfigFile).Load
+            self.CpanelUAPI    = self.CpanelConfig['Cpanel']['ServerUAPI']
+            self.CpanelUser    = self.CpanelConfig['Cpanel']['Username']
+            self.CpanelAuth    = self.CpanelConfig['Cpanel']['Token']
+            # Generate cPanel API request header
+            self.CpanelHeader = {"Authorization": f"cpanel {self.CpanelUser}:{self.CpanelAuth}"}
+            # File path
+            self.ActivePK      = self.CpanelConfig['Certificate']['PK']
+            self.Certificate   = self.CpanelConfig['Certificate']['CA']
+            self.CertificateBA = self.CpanelConfig['Certificate']['CAB']
+            # Domains list
+            self.DomainList    = self.CpanelConfig['Certificate']['Domains']
+            self.CommonName    = self.DomainList[0] if len(self.DomainList) > 0 else ""
+            # certificate validity days
+            self.ValidityDays  = self.CpanelConfig['Certificate']['ValidityDays']
+        except Exception as CpanelInitialError:
+            a4zlog.exception(f"Cpanel__init__ |{CpanelInitialError}")
+            raise
+
+    # Check cPanel UAPI status
+    def Verify(self):
+        try:
+            UAPIVerify = (self.CpanelUAPI + "/execute/Variables/get_session_information")
+            with requests.Session() as VerifyToken:
+                VerifyResponse = VerifyToken.get(UAPIVerify,headers=self.CpanelHeader,timeout=30)
+                if VerifyResponse.status_code == 200:
+                    VerifyResult = VerifyResponse.json()
+                else:
+                    a4zlog.warning(f"Unable connect cPanel UAPI |HTTP {VerifyResponse.status_code}")
+                    return False
+            # Check UAPI respon status
+            VerifyStatus = VerifyResult.get("status")
+            if VerifyStatus == 1:
+                return VerifyResult
+            # Error check
+            else:
+                VerifyError = VerifyResult.get("errors")
+                a4zlog.warning(f"Error occurred during Connect cPanel UAPI |{VerifyError}")
+                return False
+        except Exception as VerifyError:
+            a4zlog.exception(f"Error occurred during verify cPanel UAPI access |{VerifyError}")
+            return False
+        # QC 2026E03
+
+    # Upload certificate to cPanel
+    def UploadCertificate(self):
+        try:
+            # Read certificate
+            CertificateFile = Path(self.Certificate)
+            with CertificateFile.open("r") as CertificateFileString:
+                CertificateString = CertificateFileString.read()
+            CertificateData = {"crt":CertificateString}
+            # Upload certificate to cPanel UAPI
+            UAPIUploadCert = (self.CpanelUAPI + "/execute/SSL/upload_cert")
+            with requests.Session() as UAPICertUpload:
+                UAPICertUploadRespon = UAPICertUpload.post(UAPIUploadCert,headers=self.CpanelHeader,data=CertificateData,timeout=30)
+                if UAPICertUploadRespon.status_code == 200:
+                    UAPICertUploadResult = UAPICertUploadRespon.json()
+                else:
+                    a4zlog.warning(f"Unable connect cPanel UAPI |HTTP {UAPICertUploadRespon.status_code}")
+                    return False
+            # Check UAPI respon status
+            UAPICertUploadStatus = UAPICertUploadResult.get("status")
+            if UAPICertUploadStatus == 1:
+                return UAPICertUploadResult
+            # Error check
+            else:
+                UAPICertUploadError = UAPICertUploadResult.get("errors")
+                a4zlog.warning(f"Error occurred during Connect cPanel UAPI |{UAPICertUploadError}")
+                return False
+        except Exception as CertificateUploadError:
+            a4zlog.exception(f"Error occurred during upload certificate via cPanel UAPI |{CertificateUploadError}")
+            return False
+        # QC 2026E03
+
+    # Upload private key to cPanel
+    def UploadPrivateKey(self):
+        try:
+            # Read private key
+            PKFile = Path(self.ActivePK)
+            with PKFile.open("r") as PKFileString:
+                PKString = PKFileString.read()
+            PrivateKeyData = {"key":PKString}
+            # Upload private key to cPanel UAPI
+            UAPIUploadPrivateKey = (self.CpanelUAPI + "/execute/SSL/upload_key")
+            with requests.Session() as UAPIPrivateKeyUpload:
+                PrivateKeyUploadRespon = UAPIPrivateKeyUpload.post(UAPIUploadPrivateKey,headers=self.CpanelHeader,data=PrivateKeyData,timeout=30)
+                if PrivateKeyUploadRespon.status_code == 200:
+                    PrivateKeyUploadResult = PrivateKeyUploadRespon.json()
+                else:
+                    a4zlog.warning(f"Unable connect cPanel UAPI |HTTP {PrivateKeyUploadRespon.status_code}")
+                    return False
+            # Check UAPI respon status
+            PrivateKeyUploadStatus = PrivateKeyUploadResult.get("status")
+            if PrivateKeyUploadStatus == 1:
+                return PrivateKeyUploadResult
+            # Error check
+            else:
+                UAPIPrivateKeyError = PrivateKeyUploadResult.get("errors")
+                a4zlog.warning(f"Error occurred during Connect cPanel UAPI |{UAPIPrivateKeyError}")
+                return False
+        except Exception as CPrivateKeyUploadError:
+            a4zlog.exception(f"Error occurred during upload private key via cPanel UAPI |{CPrivateKeyUploadError}")
+            return False
+        # QC 2026E03
+
+    # Install certificate to cPanle
+    def Install(self):
+        try:
+            # Read certificate
+            CertificateFile = Path(self.Certificate)
+            with CertificateFile.open("r") as CertificateFileString:
+                CertificateString = CertificateFileString.read()
+            # Read private key
+            PKFile = Path(self.ActivePK)
+            with PKFile.open("r") as PKFileString:
+                PrivateKeyString = PKFileString.read()
+            # Read certificate authority bundle
+            CABFile = Path(self.CertificateBA)
+            with CABFile.open("r") as CABFileString:
+                CABString = CABFileString.read()
+            InstallData = {
+                "domain":self.CommonName.removeprefix("www."),
+                "cert":CertificateString,
+                "key":PrivateKeyString,
+                "cabundle":CABString}
+        # Install
+            UAPICertificateInstall = (self.CpanelUAPI + "/execute/SSL/install_ssl")
+            with requests.Session() as UAPIInstallCertificate:
+                CertificateInstallRespon = UAPIInstallCertificate.post(UAPICertificateInstall,headers=self.CpanelHeader,data=InstallData,timeout=180)
+                if CertificateInstallRespon.status_code == 200:
+                    CertificateInstallResult = CertificateInstallRespon.json()
+                else:
+                    a4zlog.warning(f"Unable connect cPanel UAPI |HTTP {CertificateInstallRespon.status_code}")
+                    return False
+            # Check UAPI respon status
+            CertificateInstallStatus = CertificateInstallResult.get("status")
+            if CertificateInstallStatus == 1:
+                return CertificateInstallResult
+            # Error check
+            else:
+                UAPIPrivateKeyError = CertificateInstallResult.get("errors")
+                a4zlog.warning(f"Error occurred during Connect cPanel UAPI |{UAPIPrivateKeyError}")
+                return False
+        # cPanel UAPI respon timeout is predictable, alternative is check certificate expires directilly
+        except requests.exceptions.Timeout:
+            return None
+        except Exception as CPrivateKeyUploadError:
+            a4zlog.exception(f"Error occurred during install certificate via cPanel UAPI |{CPrivateKeyUploadError}")
+            return False
+        # QC 2026E03
+
+    # Check installed certificate expires
+    def CertificateCheck(self):
+        try:
+            CertVerify = (self.CpanelUAPI + "/execute/SSL/installed_host")
+            with requests.Session() as InstallCertVerify:
+                CertVerifyResponse = InstallCertVerify.get(CertVerify,headers=self.CpanelHeader,timeout=30)
+                if CertVerifyResponse.status_code == 200:
+                    CertVerifyData = CertVerifyResponse.json()
+                else:
+                    a4zlog.warning(f"Unable connect cPanel UAPI |HTTP {CertVerifyResponse.status_code}")
+                    return False
+            # Check UAPI respon status
+            CertVerifyStatus = CertVerifyData.get("status")
+            if CertVerifyStatus == 1:
+                # Get certificate expires
+                CertExpires = CertVerifyData.get("data",{}).get("certificate",{}).get("not_after")
+                if CertExpires is None:
+                    return False
+                else:
+                    # installed certificate expires
+                    CertExpiresDate = datetime.datetime.fromtimestamp(CertExpires,tz=datetime.timezone.utc)
+                    # Local time
+                    CurrentTime = datetime.datetime.now(tz=datetime.timezone.utc)
+                    # Calculate
+                    CertRemineDate = CertExpiresDate - CurrentTime
+                    # Return days as int, with default validity days
+                    return [CertRemineDate.days,self.ValidityDays]
+            # Error check
+            else:
+                CertVerifyError = CertVerifyData.get("errors")
+                a4zlog.warning(f"Error occurred during Connect cPanel UAPI |{CertVerifyError}")
+                return False
+        except Exception as VerifyError:
+            a4zlog.exception(f"Error occurred during verify cPanel certificate status |{VerifyError}")
+            return False
+        # 2026E04

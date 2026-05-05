@@ -6,19 +6,18 @@ from sys import exit
 
 # Config load, dictionary or filepath
 ConfigFile = "/Documents/script/acme4zerossl.config.json"
-# Server reload or restart command
-ServerCommand  = None
 
 # Error handling
 FORMAT = "%(asctime)s |%(levelname)s |%(message)s"
-logging.basicConfig(level=logging.WARNING,filename="acme4zerossl.log",filemode="a",format=FORMAT)
+logging.basicConfig(level=logging.WARNING,filename="cpanel.log",filemode="a",format=FORMAT)
+
 # Script
 def main(VerifyRetry,Interval):
     # Load object
     Rt = acme.Runtime(ConfigFile)
-    Tg = acme.Telegram(ConfigFile)
-    Cf = acme.Cloudflare(ConfigFile)
     Zs = acme.ZeroSSL(ConfigFile)
+    Cf = acme.Cloudflare(ConfigFile)
+    Cp = acme.Cpanel(ConfigFile)
     # Create certificates signing request
     CSRCreateCheck = Rt.CreateCSR()
     if not isinstance(CSRCreateCheck,list):
@@ -77,36 +76,64 @@ def main(VerifyRetry,Interval):
     # Undefined error
     else:
         raise RuntimeError(f"Unable to check verification status, currently verification status: {CertVerifyCheck}")
-    # Install certificate to server folder
-    InstallCheck = Rt.Install(CertContent,ServerCommand)
+    # Save certificate to folder
+    InstallCheck = Rt.Install(CertContent)
     if InstallCheck is False:
         raise RuntimeError("Error occurred during certificate install. You may need to download and install manually.")
-    # Get certificate expires date
-    CertExpiresDate = CertCreate.get("expires","Unknown")
     if isinstance(InstallCheck,int):
-        Tg.Message(f"Certificate been renewed, will expires in {CertExpiresDate}. You may need to restart server manually.")
-        return
-    elif isinstance(InstallCheck,list):
-        Tg.Message(f"Certificate been renewed and installed, will expires in {CertExpiresDate}.")
-        return
+        Rt.Message("Certificate has been downloaded to folder, now uploading to cPanel.")
+    # Upload certificate
+    CertUploadCheck = Cp.UploadCertificate()
+    if not isinstance(CertUploadCheck,dict):
+        raise RuntimeError("Error occurred during upload certificate via cPanel UAPI.")
+    # Upload private key
+    PrivateKeyUploadCheck = Cp.UploadPrivateKey()
+    if not isinstance(PrivateKeyUploadCheck,dict):
+        raise RuntimeError("Error occurred during upload private key via cPanel UAPI.")
+    # Upload CA bundle and install
+    CertInstallCheck = Cp.Install()
+    # cPanel respon may timeout
+    if CertInstallCheck is False:
+        raise RuntimeError("Error occurred during install certificate via cPanel UAPI.")
+    else:
+        CertExpiresDate = CertCreate.get("expires","Unknown")
+    # Check certificate install
+    cPanelCheckResult = Cp.CertificateCheck()
+    if cPanelCheckResult is False:
+        raise RuntimeError("Error occurred during check certificate installed status.")
+    elif isinstance(cPanelCheckResult,list) and len(cPanelCheckResult) == 2:
+        RemainDays,ValidityDays = cPanelCheckResult
+        if RemainDays >= (ValidityDays - 3):
+            Tg.Message(f"Certificate been renewed and installed, will expires in {CertExpiresDate}.")
+            return
+        else:
+            Tg.Message(f"Certificate been renewed but not immediately installed after signed, will expires in {CertExpiresDate}.")
+            return
+    else:
+        raise RuntimeError("Unable to verify certificate status.")
 
 # Runtime, including check validity date of certificate
 if __name__ == "__main__":
+    Cp = acme.Cpanel(ConfigFile)
+    Tg = acme.Telegram(ConfigFile)
+    Rt = acme.Runtime(ConfigFile)
     try:
-        Rt = acme.Runtime(ConfigFile)
-        Tg = acme.Telegram(ConfigFile)
-        # Default minimum is 14 days
-        CertExpiresDays = Rt.ExpiresCheck()
-        # Renew determination
-        if CertExpiresDays is None:
-            main(5,60)
-            logging.info("Certificate has been renewed.")
-            exit(0)
-        # No need to renew
+        # Check cPanle hosting server certificate
+        CertExpiresDays = Cp.CertificateCheck()
+        # Unable check
+        if isinstance(CertExpiresDays,list) and len(CertExpiresDays) == 2:
+            RemainDays,ValidityDays = CertExpiresDays
+            if RemainDays <= 14:
+                main(5,60)
+                logging.info("Certificate has been renewed.")
+                exit(0)
+            # No need to renew
+            else:
+                Rt.Message(f"Certificate's validity date has {RemainDays} days left.")
+                logging.info(f"Certificate check complete |{RemainDays} days left.")
+                exit(0)
         else:
-            Rt.Message(f"Certificate's validity date has {CertExpiresDays} days left.")
-            logging.info(f"Certificate check complete |{CertExpiresDays} days left.")
-            exit(0)
+            raise RuntimeError("Unable to check certificate status from cPanel.")
     except KeyboardInterrupt:
         logging.warning("Manually interrupt.")
         exit(0)

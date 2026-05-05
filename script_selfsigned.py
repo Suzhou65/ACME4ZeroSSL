@@ -7,7 +7,7 @@ from sys import exit
 
 # Error handling
 FORMAT = "%(asctime)s |%(levelname)s |%(message)s"
-logging.basicConfig(level=logging.INFO,filename="selfsigned.log",filemode="a",format=FORMAT)
+logging.basicConfig(level=logging.WARNING,filename="selfsigned.log",filemode="a",format=FORMAT)
 
 # Signing certificate
 class SelfSignedCertificate():
@@ -17,7 +17,7 @@ class SelfSignedCertificate():
         self.Address4Backup = ""
         self.Address6Backup = ""
         # CSR config
-        self.Days         = 60
+        self.Days         = 365
         self.Country      = "JP"
         self.State        = "Tokyo Metropolis"
         self.Locality     = "Toshima"
@@ -168,5 +168,4 @@ try:
 except Exception as RunTimeError:
     logging.warning(f"Script error |{RunTimeError}")
     exit(1)
-
 # QC 2026C27
