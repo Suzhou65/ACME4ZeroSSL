@@ -53,7 +53,6 @@ Developed to automate certificate renewal via the ZeroSSL REST API, paired with 
 > cPanel UAPI accessibility (URL/Username/Token).<br>
 > Certificate already installed (doesn't supported initialization).<br>
 
-
 ## Usage
 ### Configuration file
 Supported configuration input as `dictionary` object or `json` file.<br>
@@ -236,6 +235,7 @@ Supported cPanel UAPI operations, including:
 > Certificate, private key and CA bundle upload<br>
 > Certificate installing<br>
 > Certificate expires date check<br>
+
 > `script_cpanel.py` includes Telegram Bot notifications.<br>
 ```py
 import acme4zerossl as acme
