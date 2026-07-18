@@ -4,6 +4,8 @@ from pathlib import Path
 import json
 import datetime
 import textwrap
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
 import requests
 import subprocess
 from time import sleep
@@ -97,20 +99,21 @@ class Runtime():
 
     # Check certificate expires, default minimum is 14 days
     def ExpiresCheck(self,Minimum=14):
-        # Load config for cache path
-        CacheFilePath = Path(self.Cache)
-        # Read cache get certificate expires
+        # Load certificate
+        CertificateFilePath = Path(self.Certificate)
+        # Read certificate get expires
         try:
-            with CacheFilePath.open("r",encoding="utf-8") as CacheCheck:
-                CacheData = json.load(CacheCheck)
+            with CertificateFilePath.open("rb") as CertificateCheck:
+                CertificateDict = x509.load_pem_x509_certificate(
+                    CertificateCheck.read(),default_backend())
         # Cache file not found, means first time running ACME4SSL
         except FileNotFoundError:
-            a4zlog.info("ZeroSSL cache file not found, assume an initialization situation")
+            a4zlog.info("Certificate file not found, assume an initialization situation")
             return None
         # Get expires
         try:
             # Translate cache file certificate expires string into time format
-            ExpiresTime = datetime.datetime.strptime(CacheData.get("expires"),"%Y-%m-%d %H:%M:%S").replace(tzinfo=datetime.timezone.utc)
+            ExpiresTime = CertificateDict.not_valid_after_utc
             # Currently time
             CurrentTime = datetime.datetime.now(tz=datetime.timezone.utc)
             # Calculate
@@ -125,7 +128,7 @@ class Runtime():
         except Exception as ExpiresCheckError:
             a4zlog.warning(f"Unable check certificate expires, force renewed |{ExpiresCheckError}")
             return None
-        # QC 2026E03
+        # QC 2026G18
 
     # Certificate Signing Request
     def CreateCSRConfig(self):
@@ -309,6 +312,29 @@ class Runtime():
             a4zlog.exception(f"Error occurred during install certificate or reload/restart server |{CertificateInstallError}")
             return False
         # QC 2026D23
+
+    def GetNotValidAfter(self):
+        # Load certificate
+        CertificateFilePath = Path(self.Certificate)
+        # Read certificate get expires
+        try:
+            with CertificateFilePath.open("rb") as CertificateCheck:
+                CertificateDict = x509.load_pem_x509_certificate(
+                    CertificateCheck.read(),default_backend())
+        # Cache file not found, means first time running ACME4SSL
+        except FileNotFoundError:
+            a4zlog.info("Unable read certificate file")
+            return None
+        # Get expires
+        try:
+            # Translate cache file certificate expires string into time format
+            ExpiresTime = CertificateDict.not_valid_after_utc
+            return ExpiresTime.strftime("%Y-%m-%d %H:%M:%S")
+        # Unable get certificate expires date
+        except Exception as GetNotValidAfterError:
+            a4zlog.warning(f"Unable check certificate expires |{GetNotValidAfterError}")    
+            return None
+        # QC 2026G18
 
 # Sending Telegram message
 class Telegram():

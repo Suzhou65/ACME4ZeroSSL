@@ -96,7 +96,7 @@ def main(VerifyRetry,Interval):
     if CertInstallCheck is False:
         raise RuntimeError("Error occurred during install certificate via cPanel UAPI.")
     else:
-        CertExpiresDate = CertCreate.get("expires","Unknown")
+        CertExpiresDate = Rt.GetNotValidAfter()
     # Check certificate install
     cPanelCheckResult = Cp.CertificateCheck()
     if cPanelCheckResult is False:
@@ -143,4 +143,4 @@ if __name__ == "__main__":
         RenewedErrorMessage = str(RenewedError)
         Tg.Message(RenewedErrorMessage)
         exit(1)
-# QC 2026E04
+# QC 2026G18

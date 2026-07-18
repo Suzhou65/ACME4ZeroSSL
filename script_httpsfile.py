@@ -79,7 +79,7 @@ def main(VerifyRetry,Interval):
     if InstallCheck is False:
         raise RuntimeError("Error occurred during certificate install. You may need to download and install manually.")
     # Get certificate expires date
-    CertExpiresDate = CertCreate.get("expires","Unknown")
+    CertExpiresDate = Rt.GetNotValidAfter()
     if isinstance(InstallCheck,int):
         Tg.Message(f"Certificate been renewed, will expires in {CertExpiresDate}. You may need to restart server manually.")
         return
@@ -112,4 +112,4 @@ if __name__ == "__main__":
         RenewedErrorMessage = str(RenewedError)
         Tg.Message(RenewedErrorMessage)
         exit(1)
-# QC 2026E04
+# QC 2026G18
