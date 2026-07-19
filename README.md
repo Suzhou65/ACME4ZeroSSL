@@ -28,6 +28,7 @@ Python script for renew certificate from ZeroSSL.
     + [Download certificate](#download-certificate)
     + [Cancel certificate](#cancel-certificate)
     + [Revoke certificate](#revoke-certificate)
+    + [Expires Check](#expires-check)
   * [Self-signed certificate](#self-signed-certificate)
   * [Dependencies](#dependencies)
   * [License](#license)
@@ -707,6 +708,41 @@ except Exception as ScriptError:
     exit(1)
 ```
 
+### Expires Check
+> Expiration date obtained by reading certificate. Previously calculated by reading JSON file returned from the ZeroSSL REST API, because the JSON file may contain `NULL` for the expires — which cause repeatedly request certificate renewals — approach was switched reading the certificate directly.<br>
+```python
+# Load certificate
+CertificateFilePath = Path(self.Certificate)
+# Read certificate get expires
+try:
+    with CertificateFilePath.open("rb") as CertificateCheck:
+        CertificateDict = x509.load_pem_x509_certificate(CertificateCheck.read(),default_backend())
+```
+> After reading certificate, the expires (in UTC) is compared against the local time; if the remaining time falls below the specified threshold, the function returns None to trigger a renewal. If the certificate file cannot be read, the function assumes the certificate needs to be requested from scratch via the initialization flow.<br>
+```python
+# Get expires
+try:
+    # Translate cache file certificate expires string into time format
+    ExpiresTime = CertificateDict.not_valid_after_utc
+    # Currently time
+    CurrentTime = datetime.datetime.now(tz=datetime.timezone.utc)
+    # Calculate
+    TimeDifference = ExpiresTime - CurrentTime
+    # No need renewed
+    if TimeDifference.days > Minimum:
+        return TimeDifference.days
+    # Below minimum, renewed
+    elif TimeDifference.days <= Minimum:
+        return None
+```
+> A separate function is also provided that simply returns certificate's expires as string.<br>
+```python
+try:
+    # Translate cache file certificate expires string into time format
+    ExpiresTime = CertificateDict.not_valid_after_utc
+    return ExpiresTime.strftime("%Y-%m-%d %H:%M:%S")
+```
+
 ## Self-signed certificate
 Use a self-signed certificate to prevent direct IP connections from leaking the domain certificate.<br>
 > **Demonstration script**<br>
@@ -746,12 +782,14 @@ Tested on the following Python versions:<br>
 + 3.9.2
 
 ### Python module
+Module in **bold** are third-party libraries; please install them via Python Package Index (PyPI).<br>
 + logging
 + pathlib
 + json
 + datetime
 + textwrap
-+ requests
++ [**cryptography**](https://pypi.org/project/cryptography/)
++ [**requests**](https://pypi.org/project/requests/)
 + subprocess
 + time
 + sys
