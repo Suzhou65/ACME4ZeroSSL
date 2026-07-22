@@ -1,7 +1,7 @@
 # Acme4ZeroSSL
 ![WbH](https://github.takahashi65.info/lib_badge/written-by-human.svg)
-![Python](https://github.takahashi65.info/lib_badge/python.svg)
 ![UM](https://github.takahashi65.info/lib_badge/active_maintenance.svg)
+![Python](https://github.takahashi65.info/lib_badge/python.svg)
 [![Size](https://img.shields.io/github/repo-size/Suzhou65/acme4zerossl.svg)](https://shields.io/category/size)
 
 Python script for renew certificate from ZeroSSL.
@@ -29,10 +29,14 @@ Python script for renew certificate from ZeroSSL.
     + [Cancel certificate](#cancel-certificate)
     + [Revoke certificate](#revoke-certificate)
     + [Expires Check](#expires-check)
+    + [Get expires](#get-expires)
   * [Self-signed certificate](#self-signed-certificate)
   * [Dependencies](#dependencies)
   * [License](#license)
   * [Resources](#resources)
+    + [ZeroSSL API](#zerossl-api)
+    + [cPanel](#cpanel)
+    + [Reference repository](#reference-repository)
 
 ## Development Purpose
 I manage sh*tload of servers, including my profile page, apartment's HomeKit gateway, several Hentai@Home client. Also, some headless system based on Apache Tomcat, or cPanel hosting webserver, which don't support authentication via HTTP/HTTPS challenge file.<br>
@@ -709,38 +713,57 @@ except Exception as ScriptError:
 ```
 
 ### Expires Check
-> Expiration date obtained by reading certificate. Previously calculated by reading JSON file returned from the ZeroSSL REST API, because the JSON file may contain `NULL` for the expires — which cause repeatedly request certificate renewals — approach was switched reading the certificate directly.<br>
+#### Check certificate file expires
 ```python
-# Load certificate
-CertificateFilePath = Path(self.Certificate)
-# Read certificate get expires
-try:
-    with CertificateFilePath.open("rb") as CertificateCheck:
-        CertificateDict = x509.load_pem_x509_certificate(CertificateCheck.read(),default_backend())
+Rt = acme.Runtime(ConfigFile)
+# Default minimum is 14 days
+CertExpiresDays = Rt.ExpiresCheck()
+ # Renew determination
+if CertExpiresDays is None:
+    # Renew
+    main(5,60)
+    logging.info("Certificate has been renewed.")
+    exit(0)
+# No need to renew
+else:
+    Rt.Message(f"Certificate's validity date has {CertExpiresDays} days left.")
+    logging.info(f"Certificate check complete |{CertExpiresDays} days left.")
+    exit(0)
 ```
-> After reading certificate, the expires (in UTC) is compared against the local time; if the remaining time falls below the specified threshold, the function returns None to trigger a renewal. If the certificate file cannot be read, the function assumes the certificate needs to be requested from scratch via the initialization flow.<br>
+> **Expires check mechanism:**<br>
+> Expiration date obtained by reading certificate file.<br>
+>
+> Previously calculated by reading JSON file returned from the ZeroSSL REST API, because this JSON file now assignment `NULL` at expires data before verify was complete (which is correctly, but previously was feature some how), this will cause repeatedly request certificate renewals, now change into reading certificate file.<br>
+> 
+> After reading certificate, the expires (in UTC) is compared against local time; if the remaining time falls below the specified threshold, the function returns None to trigger renewal. If the certificate file cannot be read, the function assumes the certificate needs to be requested from scratch via the initialization flow.<br>
+#### Check certificate hsoting on cPanle WHM
 ```python
-# Get expires
-try:
-    # Translate cache file certificate expires string into time format
-    ExpiresTime = CertificateDict.not_valid_after_utc
-    # Currently time
-    CurrentTime = datetime.datetime.now(tz=datetime.timezone.utc)
-    # Calculate
-    TimeDifference = ExpiresTime - CurrentTime
-    # No need renewed
-    if TimeDifference.days > Minimum:
-        return TimeDifference.days
-    # Below minimum, renewed
-    elif TimeDifference.days <= Minimum:
-        return None
+Cp = acme.Cpanel(ConfigFile)
+# Check cPanle hosting server certificate
+CertExpiresDays = Cp.CertificateCheck()
+# Unable check
+if isinstance(CertExpiresDays,list) and len(CertExpiresDays) == 2:
+    RemainDays,ValidityDays = CertExpiresDays
+    if RemainDays <= 14:
+        main(5,60)
+        logging.info("Certificate has been renewed.")
+        exit(0)
+    # No need to renew
+    else:
+        Rt.Message(f"Certificate's validity date has {RemainDays} days left.")
+        logging.info(f"Certificate check complete |{RemainDays} days left.")
+        exit(0)
 ```
-> A separate function is also provided that simply returns certificate's expires as string.<br>
+> **Expires check mechanism:**<br>
+> Reading certificate's expires (in UTC) form cPanle UAPI.<br>
+
+### Get expires
+> **Mechanism:**<br>
+> Reading certificate file and output expires as string.<br>
 ```python
-try:
-    # Translate cache file certificate expires string into time format
-    ExpiresTime = CertificateDict.not_valid_after_utc
-    return ExpiresTime.strftime("%Y-%m-%d %H:%M:%S")
+Rt = acme.Runtime(ConfigFile)
+CertExpiresDate = Rt.GetNotValidAfter()
+print(CertExpiresDate)
 ```
 
 ## Self-signed certificate
@@ -800,6 +823,7 @@ General Public License -3.0
 ## Resources
 ### ZeroSSL API
 - [ZeroSSL REST API documentation](https://zerossl.com/documentation/api/) the official documentation.
-
+### cPanel
+- [cPanel UAPI documentation](https://api.docs.cpanel.net/specifications/cpanel.openapi/ssl-certificates), SSL Certificates chapter. 
 ### Reference repository
 - [ZeroSSL-CertRenew](https://github.com/ajnik/ZeroSSL-CertRenew/tree/master) for HTTP/HTTPS challenge file.
